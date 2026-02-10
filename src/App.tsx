@@ -5,7 +5,6 @@ import { ProtectedRoute } from './components/protected-route';
 import Login from './pages/login';
 import PublicDashboard from './pages/public-dashboard';
 import StaffLayout from './layouts/staff-layout';
-import StaffDashboard from './pages/staff/dashboard';
 import StaffEventList from './pages/staff/event-list';
 import EventDetails from './pages/staff/event-details';
 import OfftrackLayout from './layouts/offtrack-layout';
@@ -32,10 +31,7 @@ function App() {
           {/* Ontrack Staff Routes (Mobile) */}
           <Route path="/ontrack" element={<ProtectedRoute allowedRoles={['staff']} />}>
             <Route element={<StaffLayout />}>
-              <Route index element={<StaffDashboard />} />
-              <Route path="events" element={<StaffEventList />} />
-              {/* Profile placeholder */}
-              <Route path="profile" element={<div className="p-4">Profile Page</div>} />
+              <Route index element={<StaffEventList />} />
             </Route>
             {/* Full screen event details (No Bottom Nav) */}
             <Route path="events/:eventId" element={<EventDetails />} />

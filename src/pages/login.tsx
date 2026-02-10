@@ -71,14 +71,6 @@ export default function Login() {
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4 justify-center">
                     <p className="text-xs text-muted-foreground">Contact admin if you forgot password</p>
-
-                    {/* Development Purpose Only */}
-                    <div className="w-full pt-4 border-t">
-                        <p className="text-xs text-center text-muted-foreground mb-2">Development Tools</p>
-                        <Button variant="outline" className="w-full text-xs" onClick={() => import('../lib/seed').then(m => m.seedDatabase())}>
-                            Seed Database (Create Admin/Staff)
-                        </Button>
-                    </div>
                 </CardFooter>
             </Card>
         </div>
