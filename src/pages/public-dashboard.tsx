@@ -589,7 +589,7 @@ export default function PublicDashboard() {
                                     id="registerNumber"
                                     placeholder="Enter your register number"
                                     value={registrationForm.registerNumber}
-                                    onChange={(e) => setRegistrationForm({ ...registrationForm, registerNumber: e.target.value })}
+                                    onChange={(e) => setRegistrationForm({ ...registrationForm, registerNumber: e.target.value.toUpperCase() })}
                                 />
                             </div>
 
@@ -688,7 +688,7 @@ export default function PublicDashboard() {
                                         id="lookupInput"
                                         placeholder="Enter your register number"
                                         value={lookupQuery}
-                                        onChange={(e) => setLookupQuery(e.target.value)}
+                                        onChange={(e) => setLookupQuery(e.target.value.toUpperCase())}
                                         onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
                                     />
                                     <Button onClick={handleLookup} disabled={searching}>
