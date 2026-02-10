@@ -1,37 +1,66 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, addDoc, query, where } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
-import { Loader2, Trophy, Clock, Users, User, Medal, Award } from "lucide-react";
-import type { Event, Participant, Department, Team } from "../types";
+import { Input } from "../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Label } from "../components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Loader2, Trophy, Clock, Users, User, Medal, Award, UserPlus, Search } from "lucide-react";
+import type { Event, Participant, Department, Team, Batch } from "../types";
 
 export default function PublicDashboard() {
-    const navigate = useNavigate();
     const [events, setEvents] = useState<Event[]>([]);
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [teams, setTeams] = useState<Team[]>([]);
+    const [batches, setBatches] = useState<Batch[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // Dialog state
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [activeMode, setActiveMode] = useState<"register" | "lookup">("lookup");
+
+    // Registration state
+    const [registrationForm, setRegistrationForm] = useState({
+        name: "",
+        registerNumber: "",
+        departmentId: "",
+        batchId: "",
+        semester: 1,
+        gender: "male" as "male" | "female",
+    });
+    const [registering, setRegistering] = useState(false);
+    const [registrationMessage, setRegistrationMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    // Lookup state (register number only)
+    const [lookupQuery, setLookupQuery] = useState("");
+    const [lookupResult, setLookupResult] = useState<{
+        participant: Participant | null;
+        events: Event[];
+    } | null>(null);
+    const [searching, setSearching] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [eventsSnap, partsSnap, deptsSnap, teamsSnap] = await Promise.all([
+                const [eventsSnap, partsSnap, deptsSnap, teamsSnap, batchesSnap] = await Promise.all([
                     getDocs(collection(db, "events")),
                     getDocs(collection(db, "participants")),
                     getDocs(collection(db, "departments")),
-                    getDocs(collection(db, "teams"))
+                    getDocs(collection(db, "teams")),
+                    getDocs(collection(db, "batches"))
                 ]);
 
                 setEvents(eventsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Event[]);
                 setParticipants(partsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Participant[]);
                 setDepartments(deptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Department[]);
                 setTeams(teamsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Team[]);
+                setBatches(batchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Batch[]);
             } catch (error) {
                 console.error("Error fetching data:", error);
             } finally {
@@ -143,6 +172,113 @@ export default function PublicDashboard() {
     const topMale = participantStats.filter(p => p.gender === 'male').sort((a, b) => b.points - a.points).slice(0, 5);
     const topFemale = participantStats.filter(p => p.gender === 'female').sort((a, b) => b.points - a.points).slice(0, 5);
 
+    // Handler for participant registration
+    const handleRegistration = async () => {
+        // Reset message
+        setRegistrationMessage(null);
+
+        // Validate required fields
+        if (!registrationForm.name.trim() || !registrationForm.registerNumber || !registrationForm.departmentId) {
+            setRegistrationMessage({ type: 'error', text: 'Name, Register Number, and Department are required.' });
+            return;
+        }
+
+        setRegistering(true);
+        try {
+            // Check for duplicate register number
+            const existingReg = participants.find(p => p.registerNumber === registrationForm.registerNumber);
+            if (existingReg) {
+                setRegistrationMessage({
+                    type: 'error',
+                    text: `Participant already exists!\nName: ${existingReg.name}\nChest No: ${existingReg.chestNumber}\nReg No: ${existingReg.registerNumber}`
+                });
+                setRegistering(false);
+                return;
+            }
+
+            // Auto-generate chest number
+            let maxChest = 100;
+            participants.forEach(p => {
+                const cn = parseInt(p.chestNumber);
+                if (!isNaN(cn) && cn > maxChest) {
+                    maxChest = cn;
+                }
+            });
+            const nextChestNumber = String(maxChest + 1);
+
+            // Create participant in Firestore
+            await addDoc(collection(db, "participants"), {
+                name: registrationForm.name,
+                registerNumber: registrationForm.registerNumber,
+                departmentId: registrationForm.departmentId,
+                batchId: registrationForm.batchId,
+                semester: registrationForm.semester,
+                gender: registrationForm.gender,
+                chestNumber: nextChestNumber,
+                totalPoints: 0,
+                individualWins: 0,
+            });
+
+            setRegistrationMessage({
+                type: 'success',
+                text: `Registration successful! Your chest number is ${nextChestNumber}. Please remember this number.`
+            });
+
+            // Reset form
+            setRegistrationForm({
+                name: "",
+                registerNumber: "",
+                departmentId: "",
+                batchId: "",
+                semester: 1,
+                gender: "male",
+            });
+
+            // Refresh participants data
+            const partsSnap = await getDocs(collection(db, "participants"));
+            setParticipants(partsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Participant[]);
+
+        } catch (error) {
+            console.error("Error during registration:", error);
+            setRegistrationMessage({ type: 'error', text: 'An error occurred during registration. Please try again.' });
+        } finally {
+            setRegistering(false);
+        }
+    };
+
+
+    // Handler for event lookup
+    const handleLookup = async () => {
+        if (!lookupQuery.trim()) return;
+
+        setSearching(true);
+        try {
+            // Only search by register number
+            const q = query(collection(db, "participants"), where("registerNumber", "==", lookupQuery.trim()));
+            const snapshot = await getDocs(q);
+
+            if (!snapshot.empty) {
+                const participant = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Participant;
+
+                // Find events this participant is registered for
+                const eventsSnapshot = await getDocs(collection(db, "events"));
+                const participantEvents = eventsSnapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Event))
+                    .filter(event => event.participants?.includes(participant.id));
+
+                setLookupResult({ participant, events: participantEvents });
+            } else {
+                setLookupResult({ participant: null, events: [] });
+            }
+        } catch (error) {
+            console.error("Error looking up participant:", error);
+            setLookupResult({ participant: null, events: [] });
+        } finally {
+            setSearching(false);
+        }
+    };
+
+
     const renderEventCard = (event: Event) => {
         const topResults = getTopParticipants(event);
         const participantCount = event.participants?.length || 0;
@@ -214,8 +350,9 @@ export default function PublicDashboard() {
                         <h1 className="text-xl font-bold text-primary">GECW Sports Meet 26</h1>
                         <p className="text-sm text-gray-500">Live Results</p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => navigate('/login')}>
-                        Staff Login
+                    <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Register / Lookup
                     </Button>
                 </div>
             </header>
@@ -412,6 +549,245 @@ export default function PublicDashboard() {
                     </Tabs>
                 )}
             </main>
+
+            {/* Register/Lookup Dialog */}
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>{activeMode === "register" ? "Register" : "Lookup"}</DialogTitle>
+                    </DialogHeader>
+
+                    <Tabs value={activeMode} onValueChange={(v) => setActiveMode(v as "register" | "lookup")}>
+                        <TabsList className="grid w-full grid-cols-1 mb-4">
+                            <TabsTrigger value="lookup">
+                                <Search className="h-4 w-4 mr-2" />
+                                Lookup
+                            </TabsTrigger>
+                        </TabsList>
+
+                        {/* Register Mode */}
+                        <TabsContent value="register" className="space-y-4">
+                            {registrationMessage && (
+                                <div className={`p-4 rounded-md ${registrationMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                    <p className="text-sm whitespace-pre-line">{registrationMessage.text}</p>
+                                </div>
+                            )}
+
+                            <div className="space-y-2">
+                                <Label htmlFor="name">Name *</Label>
+                                <Input
+                                    id="name"
+                                    placeholder="Enter your name"
+                                    value={registrationForm.name}
+                                    onChange={(e) => setRegistrationForm({ ...registrationForm, name: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="registerNumber">Register Number *</Label>
+                                <Input
+                                    id="registerNumber"
+                                    placeholder="Enter your register number"
+                                    value={registrationForm.registerNumber}
+                                    onChange={(e) => setRegistrationForm({ ...registrationForm, registerNumber: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="department">Department *</Label>
+                                <Select
+                                    value={registrationForm.departmentId}
+                                    onValueChange={(v) => setRegistrationForm({ ...registrationForm, departmentId: v })}
+                                >
+                                    <SelectTrigger id="department">
+                                        <SelectValue placeholder="Select department" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {departments.map((d) => (
+                                            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="batch">Batch</Label>
+                                <Select
+                                    value={registrationForm.batchId}
+                                    onValueChange={(v) => setRegistrationForm({ ...registrationForm, batchId: v })}
+                                >
+                                    <SelectTrigger id="batch">
+                                        <SelectValue placeholder="Select batch" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {batches
+                                            .filter(b => !registrationForm.departmentId || b.departmentId === registrationForm.departmentId)
+                                            .map((b) => (
+                                                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                            ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="semester">Semester</Label>
+                                <Select
+                                    value={String(registrationForm.semester)}
+                                    onValueChange={(v) => setRegistrationForm({ ...registrationForm, semester: Number(v) })}
+                                >
+                                    <SelectTrigger id="semester">
+                                        <SelectValue placeholder="Select semester" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="1">S1/S2</SelectItem>
+                                        <SelectItem value="3">S3/S4</SelectItem>
+                                        <SelectItem value="5">S5/S6</SelectItem>
+                                        <SelectItem value="7">S7/S8</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="gender">Gender *</Label>
+                                <Select
+                                    value={registrationForm.gender}
+                                    onValueChange={(v) => setRegistrationForm({ ...registrationForm, gender: v as "male" | "female" })}
+                                >
+                                    <SelectTrigger id="gender">
+                                        <SelectValue placeholder="Select gender" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="male">Male</SelectItem>
+                                        <SelectItem value="female">Female</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <Button
+                                onClick={handleRegistration}
+                                disabled={registering}
+                                className="w-full"
+                            >
+                                {registering ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Registering...
+                                    </>
+                                ) : (
+                                    'Register'
+                                )}
+                            </Button>
+                        </TabsContent>
+
+                        {/* Lookup Mode */}
+                        <TabsContent value="lookup" className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="lookupInput">Enter Register Number</Label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        id="lookupInput"
+                                        placeholder="Enter your register number"
+                                        value={lookupQuery}
+                                        onChange={(e) => setLookupQuery(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
+                                    />
+                                    <Button onClick={handleLookup} disabled={searching}>
+                                        {searching ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Search className="h-4 w-4" />
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {lookupResult && (
+                                <div className="mt-4 space-y-4">
+                                    {lookupResult.participant ? (
+                                        <>
+                                            <Card className="border-2">
+                                                <CardHeader>
+                                                    <CardTitle className="text-lg">Participant Details</CardTitle>
+                                                </CardHeader>
+                                                <CardContent className="space-y-2">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-muted-foreground">Name:</span>
+                                                        <span className="font-semibold">{lookupResult.participant.name}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-muted-foreground">Chest Number:</span>
+                                                        <Badge variant="outline" className="font-mono">{lookupResult.participant.chestNumber}</Badge>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-muted-foreground">Register Number:</span>
+                                                        <span className="font-mono">{lookupResult.participant.registerNumber}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-muted-foreground">Department:</span>
+                                                        <span>{departments.find(d => d.id === lookupResult.participant?.departmentId)?.name || 'N/A'}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-muted-foreground">Gender:</span>
+                                                        <span className="capitalize">{lookupResult.participant.gender}</span>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+
+                                            <Card>
+                                                <CardHeader>
+                                                    <CardTitle className="text-lg">Registered Events ({lookupResult.events.length})</CardTitle>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    {lookupResult.events.length === 0 ? (
+                                                        <p className="text-muted-foreground text-center py-4">Not registered for any events yet</p>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            {lookupResult.events.map((event) => (
+                                                                <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md">
+                                                                    <div>
+                                                                        <div className="font-medium">{event.name}</div>
+                                                                        <div className="text-xs text-muted-foreground">
+                                                                            {event.type} • {event.gender}
+                                                                        </div>
+                                                                    </div>
+                                                                    <Badge variant={
+                                                                        event.status === 'completed' ? 'default' :
+                                                                            event.status === 'ongoing' ? 'destructive' : 'secondary'
+                                                                    }>
+                                                                        {event.status}
+                                                                    </Badge>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+                                        </>
+                                    ) : (
+                                        <Card className="border-2 border-orange-200 bg-orange-50 dark:bg-orange-950/20">
+                                            <CardContent className="pt-6 text-center space-y-4">
+                                                <p className="text-muted-foreground">No participant found with register number <span className="font-mono font-semibold">{lookupQuery}</span></p>
+                                                <p className="text-sm">Would you like to register with this number?</p>
+                                                <Button
+                                                    onClick={() => {
+                                                        setRegistrationForm({ ...registrationForm, registerNumber: lookupQuery });
+                                                        setActiveMode("register");
+                                                        setLookupResult(null);
+                                                    }}
+                                                    variant="default"
+                                                >
+                                                    <UserPlus className="h-4 w-4 mr-2" />
+                                                    Register Now
+                                                </Button>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+                                </div>
+                            )}
+                        </TabsContent>
+                    </Tabs>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
