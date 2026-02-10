@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, addDoc, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -185,43 +185,21 @@ export default function PublicDashboard() {
 
         setRegistering(true);
         try {
-            // Check for duplicate register number
-            const existingReg = participants.find(p => p.registerNumber === registrationForm.registerNumber);
-            if (existingReg) {
-                setRegistrationMessage({
-                    type: 'error',
-                    text: `Participant already exists!\nName: ${existingReg.name}\nChest No: ${existingReg.chestNumber}\nReg No: ${existingReg.registerNumber}`
-                });
-                setRegistering(false);
-                return;
-            }
+            // Import dynamically or assuming it's available since we are in the same project
+            const { registerParticipant } = await import("../lib/participant-service");
 
-            // Auto-generate chest number
-            let maxChest = 100;
-            participants.forEach(p => {
-                const cn = parseInt(p.chestNumber);
-                if (!isNaN(cn) && cn > maxChest) {
-                    maxChest = cn;
-                }
-            });
-            const nextChestNumber = String(maxChest + 1);
-
-            // Create participant in Firestore
-            await addDoc(collection(db, "participants"), {
+            const newParticipant = await registerParticipant({
                 name: registrationForm.name,
                 registerNumber: registrationForm.registerNumber,
                 departmentId: registrationForm.departmentId,
                 batchId: registrationForm.batchId,
                 semester: registrationForm.semester,
                 gender: registrationForm.gender,
-                chestNumber: nextChestNumber,
-                totalPoints: 0,
-                individualWins: 0,
             });
 
             setRegistrationMessage({
                 type: 'success',
-                text: `Registration successful! Your chest number is ${nextChestNumber}. Please remember this number.`
+                text: `Registration successful! Your chest number is ${newParticipant.chestNumber}. Please remember this number.`
             });
 
             // Reset form
@@ -238,9 +216,12 @@ export default function PublicDashboard() {
             const partsSnap = await getDocs(collection(db, "participants"));
             setParticipants(partsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Participant[]);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error during registration:", error);
-            setRegistrationMessage({ type: 'error', text: 'An error occurred during registration. Please try again.' });
+            setRegistrationMessage({
+                type: 'error',
+                text: error.message || 'An error occurred during registration. Please try again.'
+            });
         } finally {
             setRegistering(false);
         }

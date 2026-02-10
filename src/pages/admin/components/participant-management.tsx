@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -91,31 +91,16 @@ export function ParticipantManagement() {
         }
         setAdding(true);
         try {
-            // Check if Register Number is unique
-            const existingReg = participants.find(p => p.registerNumber === newParticipant.registerNumber);
-            if (existingReg) {
-                alert(`Participant already exists!\nName: ${existingReg.name}\nChest No: ${existingReg.chestNumber}\nReg No: ${existingReg.registerNumber}`);
-                setAdding(false);
-                return;
-            }
-
-            // Auto-generate Chest Number
-            // Find max chest number currently assigned
-            let maxChest = 100; // Default start before 101
-            participants.forEach(p => {
-                const cn = parseInt(p.chestNumber);
-                if (!isNaN(cn) && cn > maxChest) {
-                    maxChest = cn;
-                }
+            const { registerParticipant } = await import("../../../lib/participant-service");
+            await registerParticipant({
+                name: newParticipant.name,
+                registerNumber: newParticipant.registerNumber,
+                departmentId: newParticipant.departmentId,
+                batchId: newParticipant.batchId,
+                semester: newParticipant.semester,
+                gender: newParticipant.gender,
             });
-            const nextChestNumber = String(maxChest + 1);
 
-            await addDoc(collection(db, "participants"), {
-                ...newParticipant,
-                chestNumber: nextChestNumber,
-                totalPoints: 0,
-                individualWins: 0
-            });
             setIsAddOpen(false);
             setNewParticipant({
                 name: "",
@@ -127,8 +112,9 @@ export function ParticipantManagement() {
                 chestNumber: "",
             });
             fetchData();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error adding participant", error);
+            alert(error.message || "Failed to add participant");
         } finally {
             setAdding(false);
         }
@@ -172,6 +158,56 @@ export function ParticipantManagement() {
     };
 
     const getDeptName = (id: string) => departments.find(d => d.id === id)?.name || id;
+
+    // Sort State
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+    const handleSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const sortedParticipants = [...participants].sort((a, b) => {
+        if (!sortConfig) return 0;
+
+        let aValue: any = a[sortConfig.key as keyof Participant];
+        let bValue: any = b[sortConfig.key as keyof Participant];
+
+        // Handle nested/special sorts
+        if (sortConfig.key === 'department') {
+            aValue = getDeptName(a.departmentId);
+            bValue = getDeptName(b.departmentId);
+        } else if (sortConfig.key === 'chestNumber') {
+            aValue = parseInt(a.chestNumber) || 0;
+            bValue = parseInt(b.chestNumber) || 0;
+        }
+
+        if (aValue < bValue) {
+            return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+            return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+    });
+
+    const SortIcon = ({ column }: { column: string }) => {
+        if (sortConfig?.key !== column) return <div className="w-4 h-4 inline-block" />;
+        return <span className="ml-1 inline-block">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+    };
+
+    const HeaderCell = ({ label, sortKey, className }: { label: string, sortKey: string, className?: string }) => (
+        <TableHead
+            className={`cursor-pointer hover:bg-muted/50 select-none ${className || ''}`}
+            onClick={() => handleSort(sortKey)}
+        >
+            {label}
+            <SortIcon column={sortKey} />
+        </TableHead>
+    );
 
     return (
         <div className="space-y-4">
@@ -239,22 +275,22 @@ export function ParticipantManagement() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Chest No</TableHead>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Reg No</TableHead>
-                            <TableHead>Dept</TableHead>
-                            <TableHead>Gender</TableHead>
-                            <TableHead>Semester</TableHead>
+                            <HeaderCell label="Chest No" sortKey="chestNumber" />
+                            <HeaderCell label="Name" sortKey="name" />
+                            <HeaderCell label="Reg No" sortKey="registerNumber" />
+                            <HeaderCell label="Dept" sortKey="department" />
+                            <HeaderCell label="Gender" sortKey="gender" />
+                            <HeaderCell label="Semester" sortKey="semester" />
                             <TableHead className="w-[100px]">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
                             <TableRow><TableCell colSpan={7} className="text-center py-4">Loading participants...</TableCell></TableRow>
-                        ) : participants.length === 0 ? (
+                        ) : sortedParticipants.length === 0 ? (
                             <TableRow><TableCell colSpan={7} className="text-center py-4 text-muted-foreground">No participants found.</TableCell></TableRow>
                         ) : (
-                            participants.map(p => (
+                            sortedParticipants.map(p => (
                                 <TableRow key={p.id}>
                                     <TableCell className="font-mono font-bold">{p.chestNumber || "-"}</TableCell>
                                     <TableCell>{p.name}</TableCell>

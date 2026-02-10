@@ -310,34 +310,30 @@ export default function OfftrackEventDetails() {
         if (!newParticipant.name || !newParticipant.registerNumber || !newParticipant.departmentId || !event) return;
         setProcessing(true);
         try {
-            const allParts = await getDocs(collection(db, "participants"));
-            let maxChest = 100;
-            allParts.docs.forEach(d => {
-                const cn = parseInt(d.data().chestNumber);
-                if (!isNaN(cn) && cn > maxChest) maxChest = cn;
-            });
-            const nextChest = String(maxChest + 1);
-
-            const docRef = await addDoc(collection(db, "participants"), {
-                ...newParticipant,
-                chestNumber: nextChest,
-                totalPoints: 0,
-                individualWins: 0
+            const { registerParticipant } = await import("../../lib/participant-service");
+            const createdParticipant = await registerParticipant({
+                name: newParticipant.name,
+                registerNumber: newParticipant.registerNumber,
+                departmentId: newParticipant.departmentId,
+                batchId: newParticipant.batchId,
+                semester: newParticipant.semester,
+                gender: newParticipant.gender,
             });
 
             if (event.type === "individual") {
                 await updateDoc(doc(db, "events", event.id), {
-                    participants: arrayUnion(docRef.id)
+                    participants: arrayUnion(createdParticipant.id)
                 });
                 setIsCreating(false);
                 setIsAddModalOpen(false);
                 fetchEvent();
             } else {
-                alert(`Created with Chest No ${nextChest}. Enter this in the team form.`);
+                alert(`Created with Chest No ${createdParticipant.chestNumber}. Enter this in the team form.`);
                 setIsCreating(false);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
+            alert(e.message || "Failed to create participant");
         } finally {
             setProcessing(false);
         }
