@@ -35,21 +35,25 @@ export function EditEventDialog({ event, open, onOpenChange, onEventUpdated }: E
         type: "individual",
         gender: "male",
         teamSize: 4,
-        points1st: 10,
-        points2nd: 7,
-        points3rd: 5,
+        points1st: 5,
+        points2nd: 3,
+        points3rd: 1,
     });
 
     useEffect(() => {
         if (event) {
+            const defaultPoints = event.type === "group"
+                ? { points1st: 10, points2nd: 6, points3rd: 4 }
+                : { points1st: 5, points2nd: 3, points3rd: 1 };
+
             setFormData({
                 name: event.name,
                 type: event.type,
                 gender: event.gender,
                 teamSize: event.teamSize || 4,
-                points1st: event.points1st ?? 10,
-                points2nd: event.points2nd ?? 7,
-                points3rd: event.points3rd ?? 5,
+                points1st: event.points1st ?? defaultPoints.points1st,
+                points2nd: event.points2nd ?? defaultPoints.points2nd,
+                points3rd: event.points3rd ?? defaultPoints.points3rd,
             });
         }
     }, [event]);
@@ -119,7 +123,12 @@ export function EditEventDialog({ event, open, onOpenChange, onEventUpdated }: E
                             </Label>
                             <Select
                                 value={formData.type}
-                                onValueChange={(val) => setFormData({ ...formData, type: val })}
+                                onValueChange={(val) => {
+                                    const newPoints = val === "group"
+                                        ? { points1st: 10, points2nd: 6, points3rd: 4 }
+                                        : { points1st: 5, points2nd: 3, points3rd: 1 };
+                                    setFormData({ ...formData, type: val, ...newPoints });
+                                }}
                             >
                                 <SelectTrigger className="col-span-3">
                                     <SelectValue />

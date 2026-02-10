@@ -31,9 +31,9 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
         type: "individual",
         gender: "male",
         teamSize: 4,
-        points1st: 10,
-        points2nd: 7,
-        points3rd: 5,
+        points1st: 5,
+        points2nd: 3,
+        points3rd: 1,
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -59,7 +59,7 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
 
             await addDoc(collection(db, "events"), newEvent);
             setOpen(false);
-            setFormData({ name: "", type: "individual", gender: "male", teamSize: 4, points1st: 10, points2nd: 7, points3rd: 5 });
+            setFormData({ name: "", type: "individual", gender: "male", teamSize: 4, points1st: 5, points2nd: 3, points3rd: 1 });
             onEventCreated();
         } catch (error) {
             console.error("Error creating event:", error);
@@ -104,7 +104,12 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
                             </Label>
                             <Select
                                 value={formData.type}
-                                onValueChange={(val) => setFormData({ ...formData, type: val })}
+                                onValueChange={(val) => {
+                                    const newPoints = val === "group"
+                                        ? { points1st: 10, points2nd: 6, points3rd: 4 }
+                                        : { points1st: 5, points2nd: 3, points3rd: 1 };
+                                    setFormData({ ...formData, type: val, ...newPoints });
+                                }}
                             >
                                 <SelectTrigger className="col-span-3">
                                     <SelectValue placeholder="Select type" />
