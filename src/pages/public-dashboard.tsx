@@ -227,17 +227,6 @@ export default function PublicDashboard() {
                                     deptStat.bronze++;
                                 }
                                 deptStat.points += points;
-
-                                // Credit each team member individually
-                                team.memberIds?.forEach(memberId => {
-                                    const partStat = partStatsMap.get(memberId);
-                                    if (partStat) {
-                                        partStat.points += points;
-                                        if (result.rank === 1) partStat.gold++;
-                                        else if (result.rank === 2) partStat.silver++;
-                                        else if (result.rank === 3) partStat.bronze++;
-                                    }
-                                });
                             }
                         }
                     }
