@@ -683,21 +683,27 @@ export default function PublicDashboard() {
 
                             <div className="space-y-2">
                                 <Label htmlFor="batch">Batch</Label>
-                                <Select
-                                    value={registrationForm.batchId}
-                                    onValueChange={(v) => setRegistrationForm({ ...registrationForm, batchId: v })}
-                                >
-                                    <SelectTrigger id="batch">
-                                        <SelectValue placeholder="Select batch" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {batches
-                                            .filter(b => !registrationForm.departmentId || b.departmentId === registrationForm.departmentId)
-                                            .map((b) => (
-                                                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                                            ))}
-                                    </SelectContent>
-                                </Select>
+                                {batches.filter(b => b.departmentId === registrationForm.departmentId).length > 0 ? (
+                                    <Select
+                                        value={registrationForm.batchId}
+                                        onValueChange={(v) => setRegistrationForm({ ...registrationForm, batchId: v })}
+                                    >
+                                        <SelectTrigger id="batch">
+                                            <SelectValue placeholder="Select batch" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {batches
+                                                .filter(b => !registrationForm.departmentId || b.departmentId === registrationForm.departmentId)
+                                                .map((b) => (
+                                                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <div className="text-sm text-gray-500 italic p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
+                                        No batches available for this department
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-2">

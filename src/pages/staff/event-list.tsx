@@ -26,7 +26,16 @@ export default function StaffEventList() {
             try {
                 const { data, error } = await supabase
                     .from('events')
-                    .select('*');
+                    .select(`
+                        *,
+                        currentRoundIndex:current_round_index,
+                        assignedStaffId:assigned_staff_id,
+                        winnerIds:winner_ids,
+                        teamSize:team_size,
+                        points1st:points_1st,
+                        points2nd:points_2nd,
+                        points3rd:points_3rd
+                    `);
 
                 if (error) throw error;
                 setEvents((data || []) as Event[]);

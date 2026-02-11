@@ -70,7 +70,16 @@ export default function EventDetails() {
         try {
             const { data, error } = await supabase
                 .from('events')
-                .select('*')
+                .select(`
+                    *,
+                    currentRoundIndex:current_round_index,
+                    assignedStaffId:assigned_staff_id,
+                    winnerIds:winner_ids,
+                    teamSize:team_size,
+                    points1st:points_1st,
+                    points2nd:points_2nd,
+                    points3rd:points_3rd
+                `)
                 .eq('id', eventId)
                 .single();
 
@@ -118,7 +127,15 @@ export default function EventDetails() {
 
             const { data, error } = await supabase
                 .from('participants')
-                .select('*');
+                .select(`
+                    *,
+                    registerNumber:register_number,
+                    departmentId:department_id,
+                    batchId:batch_id,
+                    chestNumber:chest_number,
+                    totalPoints:total_points,
+                    individualWins:individual_wins
+                `);
 
             if (error) throw error;
 
@@ -137,7 +154,12 @@ export default function EventDetails() {
         try {
             const { data, error } = await supabase
                 .from('teams')
-                .select('*')
+                .select(`
+                    *,
+                    eventId:event_id,
+                    departmentId:department_id,
+                    memberIds:member_ids
+                `)
                 .eq('event_id', eventId);
 
             if (error) throw error;

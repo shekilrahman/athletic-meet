@@ -280,7 +280,7 @@ export function ParticipantManagement() {
                                         {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
-                                {newParticipant.departmentId && (
+                                {newParticipant.departmentId && batches.filter(b => b.departmentId === newParticipant.departmentId).length > 0 && (
                                     <Select value={newParticipant.batchId} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, batchId: v })}>
                                         <SelectTrigger><SelectValue placeholder="Batch" /></SelectTrigger>
                                         <SelectContent>
@@ -375,12 +375,14 @@ export function ParticipantManagement() {
                                     {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
-                            <Select value={editingParticipant.batchId} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, batchId: v })}>
-                                <SelectTrigger><SelectValue placeholder="Batch" /></SelectTrigger>
-                                <SelectContent>
-                                    {batches.filter(b => b.departmentId === editingParticipant.departmentId).map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                            {editingParticipant.departmentId && batches.filter(b => b.departmentId === editingParticipant.departmentId).length > 0 && (
+                                <Select value={editingParticipant.batchId} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, batchId: v })}>
+                                    <SelectTrigger><SelectValue placeholder="Batch" /></SelectTrigger>
+                                    <SelectContent>
+                                        {batches.filter(b => b.departmentId === editingParticipant.departmentId).map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            )}
                             <Select value={editingParticipant.gender} onValueChange={(v: "male" | "female") => setEditingParticipant({ ...editingParticipant, gender: v })}>
                                 <SelectTrigger><SelectValue placeholder="Gender" /></SelectTrigger>
                                 <SelectContent>
