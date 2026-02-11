@@ -323,7 +323,7 @@ export default function OfftrackEventDetails() {
             const teamData = {
                 name: selectedDepartment,
                 event_id: event.id,
-                department_id: selectedDeptId,
+                department_id: selectedDeptId || null,
                 member_ids: ids
             };
 

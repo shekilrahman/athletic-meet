@@ -313,7 +313,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                     name: newParticipant.name,
                     register_number: newParticipant.registerNumber,
                     department_id: newParticipant.departmentId,
-                    batch_id: newParticipant.batchId,
+                    batch_id: newParticipant.batchId || null,
                     gender: newParticipant.gender,
                     semester: newParticipant.semester,
                     chest_number: nextChest,
