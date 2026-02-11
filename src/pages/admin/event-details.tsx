@@ -376,7 +376,7 @@ export default function AdminEventDetails() {
 
         setProcessing(true);
         try {
-            const selectedDeptId = departments.find(d => d.name === selectedDepartment)?.id || "";
+            const selectedDeptId = departments.find(d => d.name === selectedDepartment)?.id || null;
             // Insert Team
             const { data: teamRef, error: createError } = await supabase
                 .from('teams')

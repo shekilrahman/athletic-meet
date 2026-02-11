@@ -235,7 +235,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
             const teamData = {
                 name: teamName,
                 event_id: event.id,
-                department_id: departments.find(d => d.name === teamName)?.id || "",
+                department_id: departments.find(d => d.name === teamName)?.id || null,
                 member_ids: memberIds
             };
 
