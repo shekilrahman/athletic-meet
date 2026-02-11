@@ -28,6 +28,7 @@ export async function registerParticipant(data: RegistrationData): Promise<Parti
             .from('participants')
             .insert([
                 {
+                    id: crypto.randomUUID(),
                     name: data.name,
                     register_number: regNum,
                     department_id: data.departmentId,

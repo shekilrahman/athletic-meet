@@ -329,7 +329,7 @@ export default function OfftrackEventDetails() {
 
             const { data: team, error: teamError } = await supabase
                 .from('teams')
-                .insert([teamData])
+                .insert([{ ...teamData, id: crypto.randomUUID() }])
                 .select()
                 .single();
 

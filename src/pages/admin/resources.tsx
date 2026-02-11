@@ -59,6 +59,7 @@ export default function ManageResources() {
             const { error } = await supabase
                 .from('departments')
                 .insert([{
+                    id: crypto.randomUUID(),
                     name: newDeptName,
                     code: newDeptCode,
                     total_points: 0,
@@ -102,6 +103,7 @@ export default function ManageResources() {
             const { error } = await supabase
                 .from('batches')
                 .insert([{
+                    id: crypto.randomUUID(),
                     name: newBatchName,
                     department_id: selectedDeptId
                 }]);

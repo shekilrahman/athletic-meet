@@ -241,7 +241,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
 
             const { data: teamRef, error: createError } = await supabase
                 .from('teams')
-                .insert([teamData])
+                .insert([{ ...teamData, id: crypto.randomUUID() }])
                 .select()
                 .single();
 
@@ -309,6 +309,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
             const { data: docRef, error: insertError } = await supabase
                 .from('participants')
                 .insert([{
+                    id: crypto.randomUUID(),
                     name: newParticipant.name,
                     register_number: newParticipant.registerNumber,
                     department_id: newParticipant.departmentId,

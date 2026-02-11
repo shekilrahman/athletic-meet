@@ -58,7 +58,7 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
 
             const { error } = await supabase
                 .from('events')
-                .insert([newEvent]);
+                .insert([{ ...newEvent, id: crypto.randomUUID() }]);
 
             if (error) throw error;
 
