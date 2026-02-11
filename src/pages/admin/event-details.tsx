@@ -381,6 +381,7 @@ export default function AdminEventDetails() {
             const { data: teamRef, error: createError } = await supabase
                 .from('teams')
                 .insert([{
+                    id: crypto.randomUUID(),
                     name: selectedDepartment,
                     event_id: event.id,
                     department_id: selectedDeptId,
@@ -438,6 +439,7 @@ export default function AdminEventDetails() {
             const { data: docRef, error: insertError } = await supabase
                 .from('participants')
                 .insert([{
+                    id: crypto.randomUUID(),
                     name: newParticipant.name,
                     register_number: newParticipant.registerNumber,
                     department_id: newParticipant.departmentId,
