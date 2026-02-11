@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs, deleteDoc, doc, query, where, updateDoc, setDoc } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { supabase } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
@@ -31,19 +30,6 @@ import {
 import { Plus, Trash2, Edit, Loader2, Eye, EyeOff } from "lucide-react";
 import type { UserProfile } from "../../../types";
 import { Badge } from "../../../components/ui/badge";
-import { initializeApp, getApps, deleteApp, type FirebaseApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
-
-// Hardcoded config for secondary app initialization (safe for client-side as it's public config)
-const firebaseConfig = {
-    apiKey: "AIzaSyDjCYJmpqdDihdnMglhMFSgFo4qV6_yoRs",
-    authDomain: "college-athletic-meet.firebaseapp.com",
-    projectId: "college-athletic-meet",
-    storageBucket: "college-athletic-meet.firebasestorage.app",
-    messagingSenderId: "764642822317",
-    appId: "1:764642822317:web:eacf86e4d93fafec179e24",
-    measurementId: "G-P6PB53RX13"
-};
 
 export function StaffManagement() {
     const [staff, setStaff] = useState<UserProfile[]>([]);
@@ -70,16 +56,18 @@ export function StaffManagement() {
     const fetchStaff = async () => {
         setLoading(true);
         try {
-            // Query users where role is 'staff'
-            // We use 'staff' collection for Auth users based on our seed logic, or we can use a 'users' collection
-            // Let's stick to the 'staff' collection as per seed.ts for now to be consistent
-            const q = query(collection(db, "staff"), where("role", "==", "staff"));
-            const querySnapshot = await getDocs(q);
-            const staffData = querySnapshot.docs.map((doc) => ({
-                uid: doc.id,
-                ...doc.data(),
-            })) as UserProfile[];
-            setStaff(staffData);
+            const { data, error } = await supabase
+                .from('staff')
+                .select('*')
+                .eq('role', 'staff');
+
+            if (error) throw error;
+
+            // Map Supabase data to UserProfile type if needed, but structure should match
+            setStaff((data as any[]).map(s => ({
+                uid: s.uid || s.id, // Handle potential id vs uid difference
+                ...s
+            })) as UserProfile[]);
         } catch (error) {
             console.error("Error fetching staff:", error);
         } finally {
@@ -98,70 +86,52 @@ export function StaffManagement() {
         }
 
         setCreating(true);
-        let secondaryApp: FirebaseApp | null = null;
 
         try {
-            // 1. Initialize secondary app to create user without logging out admin
-            const appName = "secondaryApp";
-            const existingApps = getApps();
-            const foundApp = existingApps.find(app => app.name === appName);
+            // Note: In a real Supabase app, creating a user usually requires
+            // calling supabase.auth.signUp() (which logs you in) or using the Admin API (server-side).
+            // For now, we are just creating the DB record. The Admin will need to create the Auth User
+            // in the Supabase Dashboard manually or we need an Edge Function.
 
-            if (foundApp) {
-                secondaryApp = foundApp;
-            } else {
-                secondaryApp = initializeApp(firebaseConfig, appName);
-            }
+            // We'll generate a random ID for the DB record if we can't create the auth user
+            const fakeUid = crypto.randomUUID();
 
-            const secondaryAuth = getAuth(secondaryApp);
+            const { error } = await supabase.from('staff').insert([
+                {
+                    uid: fakeUid, // Ideally this should match the Auth User ID
+                    name: formData.name,
+                    email: formData.email,
+                    phone: formData.phone,
+                    role: "staff",
+                    staff_type: formData.staffType, // Snake_case in DB likely
+                    password: formData.password,
+                }
+            ]);
 
-            // 2. Create Authentication User
-            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, formData.email, formData.password);
-            const uid = userCredential.user.uid;
-
-            // 3. Create Firestore Profile (using main app's db)
-            // Storing in 'staff' collection to match auth-provider logic
-            await setDoc(doc(db, "staff", uid), {
-                uid: uid,
-                name: formData.name,
-                email: formData.email,
-                phone: formData.phone,
-                role: "staff",
-                staffType: formData.staffType,
-                password: formData.password, // Storing password for admin reference
-            });
-
-            // 4. Cleanup
-            await signOut(secondaryAuth);
-            // We don't delete the app immediately to avoid errors if it's being used, 
-            // but effectively we are done. deleteApp can be tricky in some React lifecycles.
+            if (error) throw error;
 
             setIsAddOpen(false);
             setFormData({ name: "", email: "", phone: "", password: "", staffType: "ontrack" });
             fetchStaff();
-            alert(`Staff created successfully! Credentials:\nEmail: ${formData.email}\nPassword: ${formData.password}`);
+            alert(`Staff profile created! \n\nIMPORTANT: Since client-side admin creation isn't secure/supported directly, please go to your Supabase Dashboard > Authentication and CREATE the user manually with:\n\nEmail: ${formData.email}\nPassword: ${formData.password}\n\nCopy the User ID from the dashboard and update this record if needed.`);
 
-        } catch (error: unknown) {
+        } catch (error) {
             console.error("Error adding staff:", error);
-            const err = error as { code?: string };
-            if (err.code === 'auth/email-already-in-use') {
-                alert("Email is already in use.");
-            } else {
-                alert("Failed to create staff. Check console.");
-            }
+            alert("Failed to create staff. Check console.");
         } finally {
             setCreating(false);
-            if (secondaryApp) {
-                try {
-                    await deleteApp(secondaryApp);
-                } catch (e) { console.warn("Error deleting secondary app", e) }
-            }
         }
     };
 
     const handleDeleteStaff = async (id: string) => {
-        if (!confirm("Are you sure? This removes the staff profile from the database. (The Auth account will remain active until manually disabled in Firebase Console)")) return;
+        if (!confirm("Are you sure? This removes the staff profile from the database.")) return;
         try {
-            await deleteDoc(doc(db, "staff", id));
+            const { error } = await supabase
+                .from('staff')
+                .delete()
+                .eq('uid', id);
+
+            if (error) throw error;
             fetchStaff();
         } catch (error) {
             console.error("Error deleting staff:", error);
@@ -174,7 +144,7 @@ export function StaffManagement() {
             name: staffMember.name,
             email: staffMember.email,
             phone: staffMember.phone || "",
-            password: "", // Password not editable directly here, or leave blank
+            password: "",
             staffType: staffMember.staffType || "ontrack",
         });
         setIsEditOpen(true);
@@ -183,15 +153,19 @@ export function StaffManagement() {
     const handleEditStaff = async () => {
         if (!editingStaff) return;
         try {
-            // collection is 'staff' now
-            const staffRef = doc(db, "staff", editingStaff.uid);
-            await updateDoc(staffRef, {
-                name: formData.name,
-                email: formData.email,
-                phone: formData.phone,
-                staffType: formData.staffType,
-                password: formData.password, // Ensure password is updated
-            });
+            const { error } = await supabase
+                .from('staff')
+                .update({
+                    name: formData.name,
+                    email: formData.email,
+                    phone: formData.phone,
+                    staff_type: formData.staffType,
+                    password: formData.password || undefined // Only update if provided
+                })
+                .eq('uid', editingStaff.uid);
+
+            if (error) throw error;
+
             setIsEditOpen(false);
             setEditingStaff(null);
             fetchStaff();
@@ -223,7 +197,12 @@ export function StaffManagement() {
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Add New Staff</DialogTitle>
-                            <DialogDescription>Create a new staff account with login credentials.</DialogDescription>
+                            <DialogDescription>
+                                Create a new staff profile.
+                                <span className="block mt-2 text-amber-600 text-xs font-bold">
+                                    NOTE: You must also create the Auth User in Supabase Dashboard.
+                                </span>
+                            </DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="grid grid-cols-4 items-center gap-4">
@@ -275,7 +254,7 @@ export function StaffManagement() {
                         <DialogFooter>
                             <Button onClick={handleAddStaff} disabled={creating}>
                                 {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {creating ? "Creating..." : "Create Account"}
+                                {creating ? "Creating..." : "Create Profile"}
                             </Button>
                         </DialogFooter>
                     </DialogContent>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { supabase } from "../../lib/supabase";
+import { registerParticipant } from "../../lib/participant-service";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -51,7 +51,7 @@ export default function OfftrackParticipants() {
         departmentId: "",
         batchId: "",
         semester: 1,
-        gender: "male",
+        gender: "male" as "male" | "female",
     });
 
     useEffect(() => {
@@ -60,14 +60,13 @@ export default function OfftrackParticipants() {
 
     const fetchData = async () => {
         try {
-            const [pSnap, dSnap, bSnap] = await Promise.all([
-                getDocs(collection(db, "participants")),
-                getDocs(collection(db, "departments")),
-                getDocs(collection(db, "batches")),
-            ]);
-            setParticipants(pSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Participant[]);
-            setDepartments(dSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Department[]);
-            setBatches(bSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Batch[]);
+            const { data: pData } = await supabase.from('participants').select('*');
+            const { data: dData } = await supabase.from('departments').select('*');
+            const { data: bData } = await supabase.from('batches').select('*');
+
+            setParticipants((pData || []) as Participant[]);
+            setDepartments((dData || []) as Department[]);
+            setBatches((bData || []) as Batch[]);
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {
@@ -82,7 +81,8 @@ export default function OfftrackParticipants() {
         }
         setSaving(true);
         try {
-            // Check if Register Number is unique
+            // Validate unique register number client-side first for better UX
+            // (Server/DB constraint will also catch this)
             const existingReg = participants.find(p => p.registerNumber === newParticipant.registerNumber);
             if (existingReg) {
                 alert(`Participant already exists!\nName: ${existingReg.name}\nChest No: ${existingReg.chestNumber}\nReg No: ${existingReg.registerNumber}`);
@@ -90,32 +90,22 @@ export default function OfftrackParticipants() {
                 return;
             }
 
-            // Auto-generate Chest Number
-            let maxChest = 100; // Default start before 101
-            participants.forEach(p => {
-                const cn = parseInt(p.chestNumber);
-                if (!isNaN(cn) && cn > maxChest) {
-                    maxChest = cn;
-                }
-            });
-            const nextChestNumber = String(maxChest + 1);
-
-            await addDoc(collection(db, "participants"), {
+            // Use the centralized service which handles chest number generation via DB default
+            await registerParticipant({
                 name: newParticipant.name,
                 registerNumber: newParticipant.registerNumber,
                 departmentId: newParticipant.departmentId,
                 batchId: newParticipant.batchId,
                 semester: newParticipant.semester,
                 gender: newParticipant.gender,
-                chestNumber: nextChestNumber,
-                totalPoints: 0,
-                individualWins: 0,
             });
+
             setIsAddOpen(false);
             setNewParticipant({ name: "", registerNumber: "", chestNumber: "", departmentId: "", batchId: "", semester: 1, gender: "male" });
             fetchData();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error creating participant:", error);
+            alert(error.message || "Failed to create participant.");
         } finally {
             setSaving(false);
         }
@@ -125,20 +115,27 @@ export default function OfftrackParticipants() {
         if (!editingParticipant) return;
         setSaving(true);
         try {
-            await updateDoc(doc(db, "participants", editingParticipant.id), {
-                name: editingParticipant.name,
-                registerNumber: editingParticipant.registerNumber,
-                chestNumber: editingParticipant.chestNumber,
-                departmentId: editingParticipant.departmentId,
-                batchId: editingParticipant.batchId,
-                semester: editingParticipant.semester,
-                gender: editingParticipant.gender,
-            });
+            const { error } = await supabase
+                .from('participants')
+                .update({
+                    name: editingParticipant.name,
+                    register_number: editingParticipant.registerNumber,
+                    // chest_number: editingParticipant.chestNumber, // Generally shouldn't be editable easily, but let's allow if admin really needs to fix it? DB might restrict.
+                    department_id: editingParticipant.departmentId,
+                    batch_id: editingParticipant.batchId,
+                    semester: editingParticipant.semester,
+                    gender: editingParticipant.gender,
+                })
+                .eq('id', editingParticipant.id);
+
+            if (error) throw error;
+
             setIsEditOpen(false);
             setEditingParticipant(null);
             fetchData();
         } catch (error) {
             console.error("Error updating participant:", error);
+            alert("Failed to update participant.");
         } finally {
             setSaving(false);
         }
@@ -147,10 +144,16 @@ export default function OfftrackParticipants() {
     const handleDelete = async (id: string) => {
         if (!confirm("Delete this participant?")) return;
         try {
-            await deleteDoc(doc(db, "participants", id));
+            const { error } = await supabase
+                .from('participants')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
             fetchData();
         } catch (error) {
             console.error("Error deleting participant:", error);
+            alert("Failed to delete participant.");
         }
     };
 
@@ -165,8 +168,8 @@ export default function OfftrackParticipants() {
     const filterParticipants = (gender: 'male' | 'female') => {
         return participants.filter(p => {
             const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.chestNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.registerNumber?.toLowerCase().includes(searchTerm.toLowerCase());
+                (p.chestNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (p.registerNumber || "").toLowerCase().includes(searchTerm.toLowerCase());
             return matchesSearch && p.gender === gender;
         });
     };
@@ -267,7 +270,7 @@ export default function OfftrackParticipants() {
                                     <SelectItem value="7">S7/S8</SelectItem>
                                 </SelectContent>
                             </Select>
-                            <Select value={newParticipant.gender} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, gender: v })}>
+                            <Select value={newParticipant.gender} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, gender: v as "male" | "female" })}>
                                 <SelectTrigger><SelectValue placeholder="Gender" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="male">Male</SelectItem>

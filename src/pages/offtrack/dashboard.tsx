@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { supabase } from "../../lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -17,9 +16,12 @@ export default function OfftrackDashboard() {
         const fetchAllEvents = async () => {
             try {
                 // Fetch ALL events for offtrack staff
-                const snapshot = await getDocs(collection(db, "events"));
-                const allEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Event[];
-                setEvents(allEvents);
+                const { data, error } = await supabase
+                    .from('events')
+                    .select('*');
+
+                if (error) throw error;
+                setEvents((data || []) as Event[]);
             } catch (error) {
                 console.error("Error fetching events:", error);
             } finally {

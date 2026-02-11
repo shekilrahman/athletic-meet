@@ -17,8 +17,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../../../components/ui/select";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { supabase } from "../../../lib/supabase";
 import type { Event } from "../../../types";
 
 interface EditEventDialogProps {
@@ -64,7 +63,6 @@ export function EditEventDialog({ event, open, onOpenChange, onEventUpdated }: E
         setLoading(true);
 
         try {
-            const eventRef = doc(db, "events", event.id);
             const updatedData: Partial<Event> = {
                 name: formData.name,
                 type: formData.type as "individual" | "group",
@@ -76,15 +74,15 @@ export function EditEventDialog({ event, open, onOpenChange, onEventUpdated }: E
 
             if (formData.type === "group") {
                 updatedData.teamSize = formData.teamSize;
-            } else {
-                // If switching to individual, remove teamSize (or strictly set undefined if needed, but Firestore merge works fine with omit usually, unless we want to delete field)
-                // For simplicity, we just won't update it effectively or we can set it to null/delete field.
-                // But simplified: just updating what's there.
-                // Better: Explicitly set teamSize to null if not group? Firestore requires FieldValue.delete() for that.
-                // For now, let's just update the fields we edit.
             }
 
-            await updateDoc(eventRef, updatedData);
+            const { error } = await supabase
+                .from('events')
+                .update(updatedData)
+                .eq('id', event.id);
+
+            if (error) throw error;
+
             onOpenChange(false);
             onEventUpdated();
         } catch (error) {

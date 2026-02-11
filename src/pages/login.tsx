@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -22,12 +21,18 @@ export default function Login() {
         setLoading(true);
 
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
+
+            if (error) throw error;
+
             // Redirect to the page they were trying to access, or home
             navigate(from, { replace: true });
         } catch (err: any) {
             console.error(err);
-            setError('Failed to login. Please check your credentials.');
+            setError(err.message || 'Failed to login. Please check your credentials.');
         } finally {
             setLoading(false);
         }

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { supabase } from "../../lib/supabase";
 import type { Event } from "../../types";
 import { EditEventDialog } from "../admin/components/edit-event-dialog";
 
@@ -26,12 +25,12 @@ export default function OfftrackEvents() {
     const fetchEvents = async () => {
         setLoading(true);
         try {
-            const querySnapshot = await getDocs(collection(db, "events"));
-            const eventsData = querySnapshot.docs.map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-            })) as Event[];
-            setEvents(eventsData);
+            const { data, error } = await supabase
+                .from('events')
+                .select('*');
+
+            if (error) throw error;
+            setEvents((data || []) as Event[]);
         } catch (error) {
             console.error("Error fetching events:", error);
         } finally {
@@ -90,7 +89,7 @@ export default function OfftrackEvents() {
                                     </Badge>
                                 </TableCell>
                                 <TableCell>
-                                    {event.rounds[event.currentRoundIndex]?.name || "N/A"}
+                                    {event.rounds?.[event.currentRoundIndex]?.name || "N/A"}
                                 </TableCell>
                                 <TableCell onClick={(e) => e.stopPropagation()}>
                                     <div className="flex gap-2">

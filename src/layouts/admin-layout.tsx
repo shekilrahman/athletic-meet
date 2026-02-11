@@ -2,8 +2,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, Calendar, Award, LogOut } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
-import { auth } from "../lib/firebase";
-import { signOut } from "firebase/auth";
+import { supabase } from "../lib/supabase";
 
 export default function AdminLayout() {
     const navigate = useNavigate();
@@ -11,7 +10,7 @@ export default function AdminLayout() {
 
     const handleLogout = async () => {
         try {
-            await signOut(auth);
+            await supabase.auth.signOut();
             navigate("/login");
         } catch (error) {
             console.error("Logout failed", error);

@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import type { Department, Participant, Event } from "../types";
+import type { Department, Participant, Event, Round, RoundParticipant } from "../types";
 import { Trophy, Medal, User, Loader2 } from "lucide-react";
 
 interface ParticipantStats {
@@ -39,26 +38,47 @@ export default function Scoreboard() {
         const fetchData = async () => {
             try {
                 // Fetch base data
-                const [deptSnapshot, partSnapshot, eventSnapshot] = await Promise.all([
-                    getDocs(collection(db, "departments")),
-                    getDocs(collection(db, "participants")),
-                    getDocs(collection(db, "events"))
+                const [deptRes, partRes, eventRes] = await Promise.all([
+                    supabase.from('departments').select('*'),
+                    supabase.from('participants').select('*'),
+                    supabase.from('events').select('*')
                 ]);
 
-                const deptData = deptSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                })) as Department[];
+                if (deptRes.error) throw deptRes.error;
+                if (partRes.error) throw partRes.error;
+                if (eventRes.error) throw eventRes.error;
+
+                const deptData = deptRes.data as Department[];
                 setDepartments(deptData);
 
-                const partData = partSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
+                const partData = partRes.data.map((p: any) => ({
+                    id: p.id,
+                    name: p.name,
+                    registerNumber: p.register_number,
+                    departmentId: p.department_id,
+                    batchId: p.batch_id,
+                    semester: p.semester,
+                    gender: p.gender,
+                    chestNumber: p.chest_number,
+                    totalPoints: p.total_points,
+                    individualWins: p.individual_wins
                 })) as Participant[];
 
-                const eventData = eventSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
+                const eventData = eventRes.data.map((e: any) => ({
+                    id: e.id,
+                    name: e.name,
+                    type: e.type,
+                    gender: e.gender,
+                    status: e.status,
+                    rounds: e.rounds,
+                    currentRoundIndex: e.current_round_index,
+                    participants: e.participants,
+                    assignedStaffId: e.assigned_staff_id,
+                    winnerIds: e.winner_ids,
+                    teamSize: e.team_size,
+                    points1st: e.points_1st,
+                    points2nd: e.points_2nd,
+                    points3rd: e.points_3rd
                 })) as Event[];
 
                 // Calculate points and medals from event results
@@ -95,8 +115,8 @@ export default function Scoreboard() {
 
                 // Process each event's results
                 eventData.forEach(event => {
-                    event.rounds?.forEach(round => {
-                        round.participants?.forEach(result => {
+                    event.rounds?.forEach((round: Round) => {
+                        round.participants?.forEach((result: RoundParticipant) => {
                             if (result.rank) {
                                 const participantId = result.participantId;
                                 const partStat = partStatsMap.get(participantId);

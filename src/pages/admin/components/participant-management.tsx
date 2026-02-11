@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { supabase } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import {
@@ -64,15 +63,45 @@ export function ParticipantManagement() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const partSnap = await getDocs(collection(db, "participants"));
-            const parts = partSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Participant[];
-            setParticipants(parts);
+            const [
+                { data: participantsData, error: pError },
+                { data: deptData, error: dError },
+                { data: batchData, error: bError }
+            ] = await Promise.all([
+                supabase.from('participants').select('*'),
+                supabase.from('departments').select('*'),
+                supabase.from('batches').select('*')
+            ]);
 
-            const deptSnap = await getDocs(collection(db, "departments"));
-            setDepartments(deptSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Department[]);
+            if (pError) throw pError;
+            if (dError) throw dError;
+            if (bError) throw bError;
 
-            const batchSnap = await getDocs(collection(db, "batches"));
-            setBatches(batchSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Batch[]);
+            // Map Supabase snake_case to TS camelCase
+            const mappedParticipants = (participantsData || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                registerNumber: p.register_number,
+                departmentId: p.department_id,
+                batchId: p.batch_id,
+                semester: p.semester,
+                gender: p.gender,
+                chestNumber: p.chest_number,
+                totalPoints: p.total_points,
+                individualWins: p.individual_wins
+            })) as Participant[];
+
+            const mappedBatches = (batchData || []).map((b: any) => ({
+                id: b.id,
+                name: b.name,
+                departmentId: b.department_id
+            })) as Batch[];
+
+            // Batch updates
+            setParticipants(mappedParticipants);
+            setDepartments(deptData as Department[]);
+            setBatches(mappedBatches);
+
         } catch (error) {
             console.error("Error fetching data", error);
         } finally {
@@ -124,14 +153,20 @@ export function ParticipantManagement() {
         if (!editingParticipant) return;
         setUpdating(true);
         try {
-            await updateDoc(doc(db, "participants", editingParticipant.id), {
-                name: editingParticipant.name,
-                registerNumber: editingParticipant.registerNumber,
-                departmentId: editingParticipant.departmentId,
-                batchId: editingParticipant.batchId,
-                semester: editingParticipant.semester,
-                gender: editingParticipant.gender
-            });
+            const { error } = await supabase
+                .from('participants')
+                .update({
+                    name: editingParticipant.name,
+                    register_number: editingParticipant.registerNumber,
+                    department_id: editingParticipant.departmentId,
+                    batch_id: editingParticipant.batchId,
+                    semester: editingParticipant.semester,
+                    gender: editingParticipant.gender
+                })
+                .eq('id', editingParticipant.id);
+
+            if (error) throw error;
+
             setIsEditOpen(false);
             setEditingParticipant(null);
             fetchData();
@@ -145,7 +180,12 @@ export function ParticipantManagement() {
     const handleDeleteParticipant = async (id: string) => {
         if (!confirm("Are you sure you want to delete this participant?")) return;
         try {
-            await deleteDoc(doc(db, "participants", id));
+            const { error } = await supabase
+                .from('participants')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
             fetchData();
         } catch (error) {
             console.error("Error deleting participant", error);
@@ -157,7 +197,11 @@ export function ParticipantManagement() {
         setIsEditOpen(true);
     };
 
-    const getDeptName = (id: string) => departments.find(d => d.id === id)?.name || id;
+    const getDeptName = (id: string) => {
+        if (!id) return "Unknown";
+        const dept = departments.find(d => d.id === id);
+        return dept ? dept.name : "Unknown";
+    };
 
     // Sort State
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);

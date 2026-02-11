@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { supabase } from "../../lib/supabase";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -16,7 +15,6 @@ const statusConfig = {
     completed: { color: "bg-gray-100 text-gray-600", icon: Trophy, label: "Completed" },
 };
 
-
 export default function StaffEventList() {
     const navigate = useNavigate();
     const { logout } = useAuth();
@@ -26,12 +24,12 @@ export default function StaffEventList() {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                const snapshot = await getDocs(collection(db, "events"));
-                const eventsData = snapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                })) as Event[];
-                setEvents(eventsData);
+                const { data, error } = await supabase
+                    .from('events')
+                    .select('*');
+
+                if (error) throw error;
+                setEvents((data || []) as Event[]);
             } catch (error) {
                 console.error("Error fetching events:", error);
             } finally {

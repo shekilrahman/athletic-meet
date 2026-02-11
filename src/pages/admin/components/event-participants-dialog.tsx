@@ -5,8 +5,7 @@ import { Input } from "../../../components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { Users, Trash2, Loader2, Search, AlertCircle } from "lucide-react";
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, addDoc } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { supabase } from "../../../lib/supabase";
 import { Badge } from "../../../components/ui/badge";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import type { Event, Participant, Department, Batch, Team } from "../../../types";
@@ -51,36 +50,56 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
     const fetchEventParticipants = useCallback(async () => {
         setLoading(true);
         try {
-            if (!event.participants || event.participants.length === 0) {
+            // Need to re-fetch event to get latest participants list to be sure
+            const { data: latestEvent, error: eventError } = await supabase
+                .from('events')
+                .select('participants')
+                .eq('id', event.id)
+                .single();
+
+            if (eventError || !latestEvent) throw eventError || new Error("Event not found");
+
+            const participantIds = latestEvent.participants || [];
+
+            if (participantIds.length === 0) {
                 setParticipants([]);
                 setLoading(false);
                 return;
             }
 
-            const promises = event.participants.map(async (id) => {
-                if (event.type === 'group') {
-                    const d = await getDoc(doc(db, "teams", id));
-                    return d.exists() ? { id: d.id, ...d.data(), isTeam: true } as (Team & { isTeam: true }) : null;
-                } else {
-                    const d = await getDoc(doc(db, "participants", id));
-                    return d.exists() ? { id: d.id, ...d.data(), isTeam: false } as (Participant & { isTeam: false }) : null;
-                }
-            });
+            if (event.type === 'group') {
+                const { data: teamsData, error: teamsError } = await supabase
+                    .from('teams')
+                    .select('*')
+                    .in('id', participantIds);
 
-            const results = await Promise.all(promises);
-            setParticipants(results.filter(Boolean) as (Participant | Team)[]);
+                if (teamsError) throw teamsError;
+
+                // Add isTeam flag
+                setParticipants((teamsData || []).map(t => ({ ...t, isTeam: true })) as (Team & { isTeam: true })[]);
+            } else {
+                const { data: partsData, error: partsError } = await supabase
+                    .from('participants')
+                    .select('*')
+                    .in('id', participantIds);
+
+                if (partsError) throw partsError;
+
+                setParticipants((partsData || []).map(p => ({ ...p, isTeam: false })) as (Participant & { isTeam: false })[]);
+            }
         } catch (error) {
             console.error("Error fetching participants", error);
         } finally {
             setLoading(false);
         }
-    }, [event.participants, event.type]);
+    }, [event.id, event.type]);
 
     const fetchMetadata = useCallback(async () => {
-        const dSnap = await getDocs(collection(db, "departments"));
-        setDepartments(dSnap.docs.map(d => ({ id: d.id, ...d.data() } as Department)));
-        const bSnap = await getDocs(collection(db, "batches"));
-        setBatches(bSnap.docs.map(b => ({ id: b.id, ...b.data() } as Batch)));
+        const { data: dData } = await supabase.from('departments').select('*');
+        setDepartments((dData || []) as Department[]);
+
+        const { data: bData } = await supabase.from('batches').select('*');
+        setBatches((bData || []) as Batch[]);
     }, []);
 
     // Initial Fetch
@@ -93,21 +112,30 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
 
 
     // --- Searches ---
-    const handleSearch = async (chestNo: string) => {
-        setSearchChestNo(chestNo);
+    const handleSearch = async (term: string) => {
+        const upperTerm = term.toUpperCase();
+        setSearchChestNo(upperTerm);
         setSearchedParticipant(null);
         setSearchError("");
-        if (!chestNo) return;
+        if (!upperTerm) return;
 
-        const q = query(collection(db, "participants"), where("chestNumber", "==", chestNo));
-        const snapshot = await getDocs(q);
+        const { data, error } = await supabase
+            .from('participants')
+            .select('*')
+            .or(`chest_number.eq.${upperTerm},register_number.eq.${upperTerm}`);
 
-        if (snapshot.empty) {
+        if (error) {
+            console.error(error);
+            setSearchError("Error searching");
+            return;
+        }
+
+        if (!data || data.length === 0) {
             setSearchError("Not found");
             return;
         }
 
-        const p = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Participant;
+        const p = data[0] as Participant;
 
         // Validate Gender
         if (event.gender !== 'mixed' && p.gender !== event.gender) {
@@ -116,7 +144,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
         }
 
         // Check if already in event (for individual)
-        if (event.type === 'individual' && event.participants.includes(p.id)) {
+        if (event.type === 'individual' && participants.some(existing => existing.id === p.id)) {
             setSearchError("Already added");
             return;
         }
@@ -133,13 +161,15 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
         newMembers[index] = null; // Reset current
 
         if (chestNo) {
-            const q = query(collection(db, "participants"), where("chestNumber", "==", chestNo));
-            const snapshot = await getDocs(q);
-            if (!snapshot.empty) {
-                const p = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Participant;
-                // Basic validation
+            const { data, error } = await supabase
+                .from('participants')
+                .select('*')
+                .eq('chest_number', chestNo);
+
+            if (!error && data && data.length > 0) {
+                const p = data[0] as Participant;
                 if (event.gender !== 'mixed' && p.gender !== event.gender) {
-                    // Invalid gender, maybe show error visually? For now just don't set member
+                    // Invalid gender
                 } else {
                     newMembers[index] = p;
                 }
@@ -154,15 +184,37 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
         if (!searchedParticipant) return;
         setProcessing(true);
         try {
-            await updateDoc(doc(db, "events", event.id), {
-                participants: arrayUnion(searchedParticipant.id)
-            });
+            // Read-Modify-Write for array update
+            const { data: currentEvent, error: fetchError } = await supabase
+                .from('events')
+                .select('participants')
+                .eq('id', event.id)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentParticipants = currentEvent.participants || [];
+            if (currentParticipants.includes(searchedParticipant.id)) {
+                alert("Already added!");
+                return;
+            }
+
+            const updatedParticipants = [...currentParticipants, searchedParticipant.id];
+
+            const { error: updateError } = await supabase
+                .from('events')
+                .update({ participants: updatedParticipants })
+                .eq('id', event.id);
+
+            if (updateError) throw updateError;
+
             setSearchChestNo("");
             setSearchedParticipant(null);
-            fetchEventParticipants();
+            fetchEventParticipants(); // Refresh list
             onUpdate();
         } catch (e) {
             console.error(e);
+            alert("Failed to add participant");
         } finally {
             setProcessing(false);
         }
@@ -180,18 +232,39 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
         setProcessing(true);
         try {
             const memberIds = teamMembers.map(m => m!.id);
-            const teamData: Omit<Team, 'id'> = {
+            const teamData = {
                 name: teamName,
-                eventId: event.id,
-                departmentId: departments.find(d => d.name === teamName)?.id || "",
-                memberIds: memberIds
+                event_id: event.id,
+                department_id: departments.find(d => d.name === teamName)?.id || "",
+                member_ids: memberIds
             };
 
-            const teamRef = await addDoc(collection(db, "teams"), teamData);
+            const { data: teamRef, error: createError } = await supabase
+                .from('teams')
+                .insert([teamData])
+                .select()
+                .single();
 
-            await updateDoc(doc(db, "events", event.id), {
-                participants: arrayUnion(teamRef.id)
-            });
+            if (createError) throw createError;
+
+            // Read-Modify-Write for event participants
+            const { data: currentEvent, error: fetchError } = await supabase
+                .from('events')
+                .select('participants')
+                .eq('id', event.id)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentParticipants = currentEvent.participants || [];
+            const updatedParticipants = [...currentParticipants, teamRef.id];
+
+            const { error: updateError } = await supabase
+                .from('events')
+                .update({ participants: updatedParticipants })
+                .eq('id', event.id);
+
+            if (updateError) throw updateError;
 
             setTeamChestNos(Array(event.teamSize || 1).fill(""));
             setTeamMembers(Array(event.teamSize || 1).fill(null));
@@ -200,6 +273,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
             onUpdate();
         } catch (e) {
             console.error(e);
+            alert("Failed to register team");
         } finally {
             setProcessing(false);
         }
@@ -209,28 +283,69 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
         if (!newParticipant.name || !newParticipant.registerNumber || !newParticipant.departmentId) return;
         setProcessing(true);
         try {
-            // Auto generate chest no
-            const allParts = await getDocs(collection(db, "participants"));
+            // Auto generate chest no: Get max chest_number (cast to int if needed)
+            // Doing simpler approach: Fetch all and find max in JS, or use a DB function. 
+            // Fetching all 'participants' specific columns is okay if not huge.
+            // Or order by chest_number desc limit 1.
+
+            // Note: chest_number is likely a string in DB based on usage. 
+            // We need to cast to int for correct max finding. 
+            // Supabase/Postgres sorting on string '10' vs '2' -> '2' is greater.
+            // So we fetch all (optimization needed later if > 1000s users)
+
+            const { data: allParts, error: fetchError } = await supabase
+                .from('participants')
+                .select('chest_number');
+
+            if (fetchError) throw fetchError;
+
             let maxChest = 100;
-            allParts.docs.forEach(d => {
-                const cn = parseInt(d.data().chestNumber);
+            allParts.forEach(p => {
+                const cn = parseInt(p.chest_number);
                 if (!isNaN(cn) && cn > maxChest) maxChest = cn;
             });
             const nextChest = String(maxChest + 1);
 
-            const docRef = await addDoc(collection(db, "participants"), {
-                ...newParticipant,
-                chestNumber: nextChest,
-                totalPoints: 0,
-                individualWins: 0
-            });
+            const { data: docRef, error: insertError } = await supabase
+                .from('participants')
+                .insert([{
+                    name: newParticipant.name,
+                    register_number: newParticipant.registerNumber,
+                    department_id: newParticipant.departmentId,
+                    batch_id: newParticipant.batchId,
+                    gender: newParticipant.gender,
+                    semester: newParticipant.semester,
+                    chest_number: nextChest,
+                    total_points: 0,
+                    individual_wins: 0
+                }])
+                .select()
+                .single();
 
-            const createdP = { id: docRef.id, ...newParticipant, chestNumber: nextChest } as Participant;
+            if (insertError) throw insertError;
+
+            const createdP = { ...docRef } as Participant;
 
             if (event.type === 'individual') {
-                await updateDoc(doc(db, "events", event.id), {
-                    participants: arrayUnion(docRef.id)
-                });
+                // Add to event
+                const { data: currentEvent, error: evFetchError } = await supabase
+                    .from('events')
+                    .select('participants')
+                    .eq('id', event.id)
+                    .single();
+
+                if (evFetchError) throw evFetchError;
+
+                const currentParticipants = currentEvent.participants || [];
+                const updatedParticipants = [...currentParticipants, createdP.id];
+
+                const { error: updateError } = await supabase
+                    .from('events')
+                    .update({ participants: updatedParticipants })
+                    .eq('id', event.id);
+
+                if (updateError) throw updateError;
+
                 setIsCreating(false);
                 fetchEventParticipants();
                 onUpdate();
@@ -241,6 +356,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
             }
         } catch (e) {
             console.error(e);
+            alert("Failed to create participant");
         } finally {
             setProcessing(false);
         }
@@ -249,12 +365,30 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
     const handleRemove = async (id: string) => {
         if (!confirm("Remove from event?")) return;
         try {
-            await updateDoc(doc(db, "events", event.id), {
-                participants: arrayRemove(id)
-            });
+            const { data: currentEvent, error: fetchError } = await supabase
+                .from('events')
+                .select('participants')
+                .eq('id', event.id)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentParticipants = currentEvent.participants || [];
+            const updatedParticipants = currentParticipants.filter((pId: string) => pId !== id);
+
+            const { error: updateError } = await supabase
+                .from('events')
+                .update({ participants: updatedParticipants })
+                .eq('id', event.id);
+
+            if (updateError) throw updateError;
+
             fetchEventParticipants();
             onUpdate();
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            alert("Failed to remove participant");
+        }
     };
 
     const getDeptName = (id?: string) => departments.find(d => d.id === id)?.name || id;
@@ -353,8 +487,8 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                                         <div className="relative flex-1">
                                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                             <Input
-                                                className="pl-8"
-                                                placeholder="Enter Chest Number"
+                                                className="pl-8 uppercase"
+                                                placeholder="Chest Number or Register Number"
                                                 value={searchChestNo}
                                                 onChange={e => handleSearch(e.target.value)}
                                             />
@@ -381,7 +515,10 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                                                 <AlertDescription className="flex justify-between items-center">
                                                     <span>{searchError}</span>
                                                     {searchError === "Not found" && (
-                                                        <Button variant="outline" size="sm" className="h-6 px-2" onClick={() => setIsCreating(true)}>
+                                                        <Button variant="outline" size="sm" className="h-6 px-2" onClick={() => {
+                                                            setNewParticipant(prev => ({ ...prev, registerNumber: searchChestNo }));
+                                                            setIsCreating(true);
+                                                        }}>
                                                             Create New
                                                         </Button>
                                                     )}
@@ -389,7 +526,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                                             </Alert>
                                         ) : (
                                             <div className="text-center py-8 text-muted-foreground text-sm">
-                                                Type a chest number to search...
+                                                Type a Chest Number or Register Number to search...
                                             </div>
                                         )
                                     )}
@@ -398,7 +535,10 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                         )}
                         {!isCreating && <div className="pt-4 border-t">
                             <p className="text-xs text-muted-foreground text-center">
-                                Don't have a chest number? <Button variant="link" className="p-0 h-auto" onClick={() => setIsCreating(true)}>Create new participant</Button>
+                                Don't have a chest number? <Button variant="link" className="p-0 h-auto" onClick={() => {
+                                    setNewParticipant(prev => ({ ...prev, registerNumber: searchChestNo }));
+                                    setIsCreating(true);
+                                }}>Create new participant</Button>
                             </p>
                         </div>}
                     </div>
@@ -424,14 +564,14 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                                 ) : (
                                     participants.map(p => {
                                         // Type guard
-                                        const isTeam = 'memberIds' in p;
+                                        const isTeam = 'memberIds' in p || (p as any).isTeam;
                                         if (isTeam) {
                                             const team = p as Team;
                                             return (
                                                 <TableRow key={team.id}>
                                                     <TableCell className="font-medium">{team.name}</TableCell>
                                                     <TableCell className="text-xs">
-                                                        {team.memberIds.length} Members
+                                                        {team.memberIds?.length || 0} Members
                                                         {/* Could expand to show names if needed */}
                                                     </TableCell>
                                                     <TableCell>

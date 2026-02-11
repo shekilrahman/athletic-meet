@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -7,8 +8,6 @@ import { Plus, Trash2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Label } from "../../components/ui/label";
-import { collection, addDoc, getDocs, deleteDoc, doc } from "firebase/firestore";
-import { db } from "../../lib/firebase";
 import { Badge } from "../../components/ui/badge";
 import type { Department, Batch } from "../../types";
 
@@ -30,13 +29,19 @@ export default function ManageResources() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const deptsSnap = await getDocs(collection(db, "departments"));
-            const fetchedDepts = deptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Department[];
-            setDepartments(fetchedDepts);
+            const { data: deptsData, error: deptsError } = await supabase
+                .from('departments')
+                .select('*');
 
-            const batchesSnap = await getDocs(collection(db, "batches"));
-            const fetchedBatches = batchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Batch[];
-            setBatches(fetchedBatches);
+            if (deptsError) throw deptsError;
+            setDepartments((deptsData || []) as Department[]);
+
+            const { data: batchesData, error: batchesError } = await supabase
+                .from('batches')
+                .select('*');
+
+            if (batchesError) throw batchesError;
+            setBatches((batchesData || []) as Batch[]);
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {
@@ -51,12 +56,17 @@ export default function ManageResources() {
     const addDepartment = async () => {
         if (!newDeptName || !newDeptCode) return;
         try {
-            await addDoc(collection(db, "departments"), {
-                name: newDeptName,
-                code: newDeptCode,
-                totalPoints: 0,
-                medalCount: { gold: 0, silver: 0, bronze: 0 }
-            });
+            const { error } = await supabase
+                .from('departments')
+                .insert([{
+                    name: newDeptName,
+                    code: newDeptCode,
+                    total_points: 0,
+                    medal_count: { gold: 0, silver: 0, bronze: 0 }
+                }]);
+
+            if (error) throw error;
+
             setNewDeptName("");
             setNewDeptCode("");
             fetchData();
@@ -68,7 +78,12 @@ export default function ManageResources() {
     const removeDepartment = async (id: string) => {
         if (!confirm("Are you sure? This will delete the department.")) return;
         try {
-            await deleteDoc(doc(db, "departments", id));
+            const { error } = await supabase
+                .from('departments')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
             fetchData();
         } catch (error) {
             console.error("Error removing department:", error);
@@ -84,10 +99,15 @@ export default function ManageResources() {
     const handleAddBatch = async () => {
         if (!newBatchName || !selectedDeptId) return;
         try {
-            await addDoc(collection(db, "batches"), {
-                name: newBatchName,
-                departmentId: selectedDeptId
-            });
+            const { error } = await supabase
+                .from('batches')
+                .insert([{
+                    name: newBatchName,
+                    department_id: selectedDeptId
+                }]);
+
+            if (error) throw error;
+
             setIsAddBatchOpen(false);
             fetchData();
         } catch (error) {

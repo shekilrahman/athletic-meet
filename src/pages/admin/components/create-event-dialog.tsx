@@ -19,8 +19,7 @@ import {
     SelectValue,
 } from "../../../components/ui/select";
 import { Plus } from "lucide-react";
-import { collection, addDoc } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { supabase } from "../../../lib/supabase";
 import type { Event } from "../../../types";
 
 export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => void }) {
@@ -57,7 +56,12 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
                 ],
             };
 
-            await addDoc(collection(db, "events"), newEvent);
+            const { error } = await supabase
+                .from('events')
+                .insert([newEvent]);
+
+            if (error) throw error;
+
             setOpen(false);
             setFormData({ name: "", type: "individual", gender: "male", teamSize: 4, points1st: 5, points2nd: 3, points3rd: 1 });
             onEventCreated();

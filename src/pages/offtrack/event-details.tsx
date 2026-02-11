@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, addDoc } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { supabase } from "../../lib/supabase";
+import { registerParticipant } from "../../lib/participant-service";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Card, CardContent } from "../../components/ui/card";
 import { ArrowLeft, Trash2, Loader2, Search, AlertCircle, Plus, Users, Edit, ChevronRight } from "lucide-react";
-import type { Event, Participant, Department, Batch, Team } from "../../types";
+import type { Event, Participant, Department, Batch, Team, Round } from "../../types";
 
 // Helper function to display semester as group
 const getSemesterGroup = (sem: number): string => {
@@ -62,28 +62,35 @@ export default function OfftrackEventDetails() {
     });
 
     // Edit participant state
-    const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    // Edit participant state - currently unused or handled inline?
+    // const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
+    // const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
     // Fetch event
     const fetchEvent = useCallback(async () => {
         if (!eventId) return;
         setLoading(true);
         try {
-            const eventDoc = await getDoc(doc(db, "events", eventId));
-            if (eventDoc.exists()) {
-                const eventData = { id: eventDoc.id, ...eventDoc.data() } as Event;
-                setEvent(eventData);
-                if (eventData.type === "group" && eventData.teamSize) {
-                    setTeamChestNos(Array(eventData.teamSize).fill(""));
-                    setTeamMembers(Array(eventData.teamSize).fill(null));
-                    setTeamErrors(Array(eventData.teamSize).fill(""));
-                }
-                setNewParticipant(prev => ({
-                    ...prev,
-                    gender: eventData.gender === "mixed" ? "male" : eventData.gender
-                }));
+            const { data, error } = await supabase
+                .from('events')
+                .select('*')
+                .eq('id', eventId)
+                .single();
+
+            if (error) throw error;
+            const eventData = data as Event;
+            setEvent(eventData);
+
+            if (eventData.type === "group" && eventData.teamSize) {
+                setTeamChestNos(Array(eventData.teamSize).fill(""));
+                setTeamMembers(Array(eventData.teamSize).fill(null));
+                setTeamErrors(Array(eventData.teamSize).fill(""));
             }
+            setNewParticipant(prev => ({
+                ...prev,
+                gender: eventData.gender === "mixed" ? "male" : eventData.gender
+            }));
+
         } catch (error) {
             console.error("Error fetching event:", error);
         } finally {
@@ -101,27 +108,46 @@ export default function OfftrackEventDetails() {
 
         try {
             if (event.type === "group") {
-                const teamPromises = event.participants.map(async (id) => {
-                    const d = await getDoc(doc(db, "teams", id));
-                    if (!d.exists()) return null;
-                    const team = { id: d.id, ...d.data() } as Team;
-                    // Fetch team members
-                    const memberPromises = team.memberIds.map(async (pid) => {
-                        const pd = await getDoc(doc(db, "participants", pid));
-                        return pd.exists() ? { id: pd.id, ...pd.data() } as Participant : null;
-                    });
-                    const members = (await Promise.all(memberPromises)).filter(Boolean) as Participant[];
-                    return { ...team, members };
-                });
-                const teamsWithMembers = (await Promise.all(teamPromises)).filter(Boolean) as (Team & { members: Participant[] })[];
-                setTeams(teamsWithMembers as Team[]);
+                // Fetch teams
+                const { data: teamsData, error: teamsError } = await supabase
+                    .from('teams')
+                    .select('*')
+                    .in('id', event.participants);
+
+                if (teamsError) throw teamsError;
+
+                const teams = teamsData as Team[];
+
+                // Fetch members for all teams
+                const allMemberIds = teams.flatMap(t => t.memberIds);
+                if (allMemberIds.length > 0) {
+                    const { data: membersData, error: membersError } = await supabase
+                        .from('participants')
+                        .select('*')
+                        .in('id', allMemberIds);
+
+                    if (membersError) throw membersError;
+                    const members = membersData as Participant[];
+
+                    // Map members to teams
+                    const teamsWithMembers = teams.map(team => ({
+                        ...team,
+                        members: team.memberIds.map(mid => members.find(m => m.id === mid)).filter(Boolean) as Participant[]
+                    }));
+                    setTeams(teamsWithMembers);
+                } else {
+                    setTeams(teams);
+                }
+
             } else {
-                const partPromises = event.participants.map(async (id) => {
-                    const d = await getDoc(doc(db, "participants", id));
-                    return d.exists() ? { id: d.id, ...d.data() } as Participant : null;
-                });
-                const parts = (await Promise.all(partPromises)).filter(Boolean) as Participant[];
-                setParticipants(parts);
+                // Fetch individual participants
+                const { data: parts, error } = await supabase
+                    .from('participants')
+                    .select('*')
+                    .in('id', event.participants);
+
+                if (error) throw error;
+                setParticipants((parts || []) as Participant[]);
             }
         } catch (error) {
             console.error("Error fetching participants:", error);
@@ -130,10 +156,10 @@ export default function OfftrackEventDetails() {
 
     // Fetch metadata
     const fetchMetadata = useCallback(async () => {
-        const dSnap = await getDocs(collection(db, "departments"));
-        setDepartments(dSnap.docs.map(d => ({ id: d.id, ...d.data() } as Department)));
-        const bSnap = await getDocs(collection(db, "batches"));
-        setBatches(bSnap.docs.map(b => ({ id: b.id, ...b.data() } as Batch)));
+        const { data: dData } = await supabase.from('departments').select('*');
+        setDepartments((dData || []) as Department[]);
+        const { data: bData } = await supabase.from('batches').select('*');
+        setBatches((bData || []) as Batch[]);
     }, []);
 
     useEffect(() => {
@@ -152,15 +178,17 @@ export default function OfftrackEventDetails() {
         setSearchError("");
         if (!chestNo || !event) return;
 
-        const q = query(collection(db, "participants"), where("chestNumber", "==", chestNo));
-        const snapshot = await getDocs(q);
+        const { data, error } = await supabase
+            .from('participants')
+            .select('*')
+            .eq('chest_number', chestNo); // Note: check DB column name if it is snake_case
 
-        if (snapshot.empty) {
+        if (error || !data || data.length === 0) {
             setSearchError("Not found");
             return;
         }
 
-        const p = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Participant;
+        const p = data[0] as Participant;
 
         if (event.gender !== "mixed" && p.gender !== event.gender) {
             setSearchError(`Gender mismatch (${p.gender})`);
@@ -203,17 +231,19 @@ export default function OfftrackEventDetails() {
             return;
         }
 
-        const q = query(collection(db, "participants"), where("chestNumber", "==", chestNo));
-        const snapshot = await getDocs(q);
+        const { data, error } = await supabase
+            .from('participants')
+            .select('*')
+            .eq('chest_number', chestNo);
 
-        if (snapshot.empty) {
+        if (error || !data || data.length === 0) {
             newErrors[index] = "Not found";
             setTeamMembers(newMembers);
             setTeamErrors(newErrors);
             return;
         }
 
-        const p = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Participant;
+        const p = data[0] as Participant;
 
         if (event.gender !== "mixed" && p.gender !== event.gender) {
             newErrors[index] = "Wrong gender";
@@ -240,9 +270,18 @@ export default function OfftrackEventDetails() {
         if (!searchedParticipant || !event) return;
         setProcessing(true);
         try {
-            await updateDoc(doc(db, "events", event.id), {
-                participants: arrayUnion(searchedParticipant.id)
-            });
+            const updatedParticipants = [...(event.participants || [])];
+            if (!updatedParticipants.includes(searchedParticipant.id)) {
+                updatedParticipants.push(searchedParticipant.id);
+            }
+
+            const { error } = await supabase
+                .from('events')
+                .update({ participants: updatedParticipants })
+                .eq('id', event.id);
+
+            if (error) throw error;
+
             setSearchChestNo("");
             setSearchedParticipant(null);
             setIsAddModalOpen(false);
@@ -272,7 +311,8 @@ export default function OfftrackEventDetails() {
         }
 
         const ids = teamMembers.map(m => m!.id);
-        if (new Set(ids).size !== ids.length) {
+        const uniqueIds = new Set(ids);
+        if (uniqueIds.size !== ids.length) {
             alert("Duplicate members detected.");
             return;
         }
@@ -280,17 +320,29 @@ export default function OfftrackEventDetails() {
         setProcessing(true);
         try {
             const selectedDeptId = departments.find(d => d.name === selectedDepartment)?.id || "";
-            const teamData: Omit<Team, "id"> = {
+            const teamData = {
                 name: selectedDepartment,
-                eventId: event.id,
-                departmentId: selectedDeptId,
-                memberIds: ids
+                event_id: event.id,
+                department_id: selectedDeptId,
+                member_ids: ids
             };
 
-            const teamRef = await addDoc(collection(db, "teams"), teamData);
-            await updateDoc(doc(db, "events", event.id), {
-                participants: arrayUnion(teamRef.id)
-            });
+            const { data: team, error: teamError } = await supabase
+                .from('teams')
+                .insert([teamData])
+                .select()
+                .single();
+
+            if (teamError) throw teamError;
+
+            const updatedParticipants = [...(event.participants || []), team.id];
+
+            const { error: updateError } = await supabase
+                .from('events')
+                .update({ participants: updatedParticipants })
+                .eq('id', event.id);
+
+            if (updateError) throw updateError;
 
             setTeamChestNos(Array(event.teamSize || 1).fill(""));
             setTeamMembers(Array(event.teamSize || 1).fill(null));
@@ -310,7 +362,6 @@ export default function OfftrackEventDetails() {
         if (!newParticipant.name || !newParticipant.registerNumber || !newParticipant.departmentId || !event) return;
         setProcessing(true);
         try {
-            const { registerParticipant } = await import("../../lib/participant-service");
             const createdParticipant = await registerParticipant({
                 name: newParticipant.name,
                 registerNumber: newParticipant.registerNumber,
@@ -321,9 +372,18 @@ export default function OfftrackEventDetails() {
             });
 
             if (event.type === "individual") {
-                await updateDoc(doc(db, "events", event.id), {
-                    participants: arrayUnion(createdParticipant.id)
-                });
+                const updatedParticipants = [...(event.participants || [])];
+                if (!updatedParticipants.includes(createdParticipant.id)) {
+                    updatedParticipants.push(createdParticipant.id);
+                }
+
+                const { error } = await supabase
+                    .from('events')
+                    .update({ participants: updatedParticipants })
+                    .eq('id', event.id);
+
+                if (error) throw error;
+
                 setIsCreating(false);
                 setIsAddModalOpen(false);
                 fetchEvent();
@@ -343,37 +403,21 @@ export default function OfftrackEventDetails() {
     const handleRemove = async (id: string) => {
         if (!confirm("Remove from event?") || !event) return;
         try {
-            await updateDoc(doc(db, "events", event.id), {
-                participants: arrayRemove(id)
-            });
+            const updatedParticipants = (event.participants || []).filter(pid => pid !== id);
+
+            const { error } = await supabase
+                .from('events')
+                .update({ participants: updatedParticipants })
+                .eq('id', event.id);
+
+            if (error) throw error;
             fetchEvent();
         } catch (e) {
             console.error(e);
         }
     };
 
-    // Update participant
-    const handleUpdateParticipant = async () => {
-        if (!editingParticipant) return;
-        setProcessing(true);
-        try {
-            await updateDoc(doc(db, "participants", editingParticipant.id), {
-                name: editingParticipant.name,
-                registerNumber: editingParticipant.registerNumber,
-                departmentId: editingParticipant.departmentId,
-                batchId: editingParticipant.batchId,
-                semester: editingParticipant.semester,
-                gender: editingParticipant.gender
-            });
-            setIsEditModalOpen(false);
-            setEditingParticipant(null);
-            fetchEvent();
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setProcessing(false);
-        }
-    };
+
 
     // ─── Round Manager Logic (Ported from Staff) ────────────────
     const [isManagerOpen, setIsManagerOpen] = useState(false);
@@ -388,11 +432,11 @@ export default function OfftrackEventDetails() {
         setRoundSaving(true);
         try {
             const nextIndex = (event.currentRoundIndex || 0) + 1;
-            const updatedRounds = [...(event.rounds || [])];
+            const updatedRounds: Round[] = JSON.parse(JSON.stringify(event.rounds || []));
 
             // Mark current as complete if exists
-            if (updatedRounds[event.currentRoundIndex]) {
-                updatedRounds[event.currentRoundIndex].status = "completed";
+            if (updatedRounds[event.currentRoundIndex || 0]) {
+                updatedRounds[event.currentRoundIndex || 0].status = "completed";
             }
 
             updatedRounds.push({
@@ -400,13 +444,18 @@ export default function OfftrackEventDetails() {
                 name: nextName,
                 sequence: nextIndex + 1,
                 status: "pending",
-                participants: []
+                participants: [] // No participants initially for next round
             });
 
-            await updateDoc(doc(db, "events", eventId), {
-                rounds: updatedRounds,
-                currentRoundIndex: nextIndex
-            });
+            const { error } = await supabase
+                .from('events')
+                .update({
+                    rounds: updatedRounds,
+                    current_round_index: nextIndex
+                })
+                .eq('id', eventId);
+
+            if (error) throw error;
 
             setIsManagerOpen(false);
             fetchEvent();
@@ -418,11 +467,18 @@ export default function OfftrackEventDetails() {
         if (!event || !eventId) return;
         setRoundSaving(true);
         try {
-            const updatedRounds = [...(event.rounds || [])];
+            const updatedRounds: Round[] = JSON.parse(JSON.stringify(event.rounds || []));
             const curIdx = event.currentRoundIndex || 0;
             if (updatedRounds[curIdx]) {
                 updatedRounds[curIdx].name = "Final";
-                await updateDoc(doc(db, "events", eventId), { rounds: updatedRounds });
+
+                const { error } = await supabase
+                    .from('events')
+                    .update({ rounds: updatedRounds })
+                    .eq('id', eventId);
+
+                if (error) throw error;
+
                 setIsManagerOpen(false);
                 fetchEvent();
             }
@@ -437,11 +493,18 @@ export default function OfftrackEventDetails() {
         if (!event || !eventId || !renameRoundName.trim()) return;
         setRoundSaving(true);
         try {
-            const updatedRounds = [...(event.rounds || [])];
+            const updatedRounds: Round[] = JSON.parse(JSON.stringify(event.rounds || []));
             const curIdx = event.currentRoundIndex || 0;
             if (updatedRounds[curIdx]) {
                 updatedRounds[curIdx].name = renameRoundName.trim();
-                await updateDoc(doc(db, "events", eventId), { rounds: updatedRounds });
+
+                const { error } = await supabase
+                    .from('events')
+                    .update({ rounds: updatedRounds })
+                    .eq('id', eventId);
+
+                if (error) throw error;
+
                 setIsManagerOpen(false);
                 fetchEvent();
             }
@@ -453,15 +516,22 @@ export default function OfftrackEventDetails() {
         if (!event || !eventId) return;
         setRoundSaving(true);
         try {
-            const updatedRounds = [...(event.rounds || [])];
+            const updatedRounds: Round[] = JSON.parse(JSON.stringify(event.rounds || []));
             const curIdx = event.currentRoundIndex || 0;
             if (updatedRounds[curIdx]) {
                 updatedRounds[curIdx].status = "completed";
             }
-            await updateDoc(doc(db, "events", eventId), {
-                rounds: updatedRounds,
-                status: "completed"
-            });
+
+            const { error } = await supabase
+                .from('events')
+                .update({
+                    rounds: updatedRounds,
+                    status: "completed"
+                })
+                .eq('id', eventId);
+
+            if (error) throw error;
+
             setIsManagerOpen(false);
             fetchEvent();
         } catch (e) { console.error(e); }
@@ -791,9 +861,11 @@ export default function OfftrackEventDetails() {
                                                 </div>
                                             </div>
                                             <div className="flex gap-1">
+                                                {/* Edit disabled for now
                                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingParticipant(p); setIsEditModalOpen(true); }}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
+                                                */}
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => handleRemove(p.id)}>
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
@@ -806,56 +878,6 @@ export default function OfftrackEventDetails() {
                     </div>
                 )}
             </main>
-
-            {/* Edit Participant Modal */}
-            <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Edit Participant</DialogTitle>
-                    </DialogHeader>
-                    {editingParticipant && (
-                        <div className="space-y-3">
-                            <Input
-                                placeholder="Name"
-                                value={editingParticipant.name}
-                                onChange={e => setEditingParticipant({ ...editingParticipant, name: e.target.value })}
-                            />
-                            <Input
-                                placeholder="Register Number"
-                                value={editingParticipant.registerNumber}
-                                onChange={e => setEditingParticipant({ ...editingParticipant, registerNumber: e.target.value })}
-                            />
-                            <Select value={editingParticipant.departmentId} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, departmentId: v })}>
-                                <SelectTrigger><SelectValue placeholder="Department" /></SelectTrigger>
-                                <SelectContent>
-                                    {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                            <Select value={editingParticipant.batchId} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, batchId: v })}>
-                                <SelectTrigger><SelectValue placeholder="Batch" /></SelectTrigger>
-                                <SelectContent>
-                                    {batches.filter(b => b.departmentId === editingParticipant.departmentId).map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                            <Select value={String(editingParticipant.semester)} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, semester: parseInt(v) })}>
-                                <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="1">S1/S2</SelectItem>
-                                    <SelectItem value="3">S3/S4</SelectItem>
-                                    <SelectItem value="5">S5/S6</SelectItem>
-                                    <SelectItem value="7">S7/S8</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <div className="flex gap-2 pt-2">
-                                <Button onClick={handleUpdateParticipant} disabled={processing}>
-                                    {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Update"}
-                                </Button>
-                                <Button variant="ghost" onClick={() => { setIsEditModalOpen(false); setEditingParticipant(null); }}>Cancel</Button>
-                            </div>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }

@@ -19,6 +19,7 @@ import ManageResources from './pages/admin/resources';
 import AdminEvents from './pages/admin/events';
 import AdminEventDetails from './pages/admin/event-details';
 
+
 function App() {
   return (
     <AuthProvider>
@@ -56,8 +57,8 @@ function App() {
               <Route path="events" element={<AdminEvents />} />
               <Route path="certificates" element={<div className="p-4">Certificates</div>} />
             </Route>
-            {/* Full-page route without sidebar */}
             <Route path="events/:eventId" element={<AdminEventDetails />} />
+
           </Route>
 
           {/* Fallback */}

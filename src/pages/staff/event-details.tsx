@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc, updateDoc, collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
@@ -69,19 +68,23 @@ export default function EventDetails() {
     const fetchEvent = useCallback(async () => {
         if (!eventId) return;
         try {
-            const eventDoc = await getDoc(doc(db, "events", eventId));
-            if (eventDoc.exists()) {
-                const data = { id: eventDoc.id, ...eventDoc.data() } as Event;
-                setEvent(data);
+            const { data, error } = await supabase
+                .from('events')
+                .select('*')
+                .eq('id', eventId)
+                .single();
 
-                const curRoundIdx = data.currentRoundIndex || 0;
-                const curRound = data.rounds?.[curRoundIdx];
-                if (curRound && curRound.status !== "completed") {
-                    const usedSets = new Set(curRound.participants.map(p => p.set).filter(Boolean));
-                    const maxSet = usedSets.size > 0 ? Math.max(...Array.from(usedSets) as number[]) : 0;
-                    if (currentSetParticipants.length === 0) {
-                        setCurrentSetNumber(maxSet + 1);
-                    }
+            if (error) throw error;
+            const eventData = data as Event;
+            setEvent(eventData);
+
+            const curRoundIdx = eventData.currentRoundIndex || 0;
+            const curRound = eventData.rounds?.[curRoundIdx];
+            if (curRound && curRound.status !== "completed") {
+                const usedSets = new Set(curRound.participants.map(p => p.set).filter(Boolean));
+                const maxSet = usedSets.size > 0 ? Math.max(...Array.from(usedSets) as number[]) : 0;
+                if (currentSetParticipants.length === 0) {
+                    setCurrentSetNumber(maxSet + 1);
                 }
             }
         } catch (error) {
@@ -100,48 +103,48 @@ export default function EventDetails() {
 
     const fetchParticipants = useCallback(async () => {
         try {
-            const querySnapshot = await getDocs(collection(db, "participants"));
+            // Need to fetch all potential participants. 
+            // In a larger app, we would filter this more strictly.
+            // For now, let's just fetch all participants to be safe and simple given the map logic.
+            // Alternatively, we could collect all IDs from event.participants and teams.
+
+            let relativeIds = new Set<string>();
+            if (event?.participants) event.participants.forEach(id => relativeIds.add(id));
+            // We can't easily get team members without fetching teams first.
+            // But we fetch teams in parallel or shortly after.
+            // Let's just fetch all participants for now to simplify.
+            // Better: use `in` query if possible, but the list might be long.
+            // Let's assume fetching all is okay for this event scale.
+
+            const { data, error } = await supabase
+                .from('participants')
+                .select('*');
+
+            if (error) throw error;
+
             const map: Record<string, Participant> = {};
-
-            // Gather all relevant participant IDs
-            const relevantIds = new Set<string>();
-
-            // 1. Direct participants
-            if (event?.participants) {
-                event.participants.forEach(id => relevantIds.add(id));
-            }
-
-            // 2. Team members (if group event)
-            if (event?.type === 'group' && Object.keys(teamMap).length > 0) {
-                Object.values(teamMap).forEach(team => {
-                    team.memberIds?.forEach(mid => relevantIds.add(mid));
-                });
-            }
-
-            querySnapshot.forEach(doc => {
-                if (relevantIds.has(doc.id)) {
-                    map[doc.id] = { id: doc.id, ...doc.data() } as Participant;
-                }
+            data.forEach((p: any) => {
+                map[p.id] = p as Participant;
             });
             setParticipantMap(map);
         } catch (error) {
             console.error("Error fetching participants:", error);
         }
-    }, [event, teamMap]);
+    }, [event]);
 
     const fetchTeams = useCallback(async () => {
         if (!event || event.type !== 'group' || !event.participants) return;
         try {
-            // In a real app, we might query by eventId, but since we have IDs in event.participants:
+            const { data, error } = await supabase
+                .from('teams')
+                .select('*')
+                .eq('event_id', eventId);
 
-            // Batch fetching or individual fetching (Firestore "in" query has limit of 10-30)
-            // For simplicity, we'll fetch all teams for this event
-            const q = query(collection(db, "teams"), where("eventId", "==", eventId));
-            const querySnapshot = await getDocs(q);
+            if (error) throw error;
 
             const map: Record<string, Team> = {};
-            querySnapshot.forEach(doc => {
-                map[doc.id] = { id: doc.id, ...doc.data() } as Team;
+            data.forEach((t: any) => {
+                map[t.id] = t as Team;
             });
             setTeamMap(map);
         } catch (error) {
@@ -151,10 +154,12 @@ export default function EventDetails() {
 
     const fetchDepartments = useCallback(async () => {
         try {
-            const querySnapshot = await getDocs(collection(db, "departments"));
-            const list: Department[] = [];
-            querySnapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() } as Department));
-            setDepartments(list);
+            const { data, error } = await supabase
+                .from('departments')
+                .select('*');
+
+            if (error) throw error;
+            setDepartments((data || []) as Department[]);
         } catch (e) {
             console.error("Error fetching departments", e);
         }
@@ -232,11 +237,15 @@ export default function EventDetails() {
             participants: [...otherParticipants, ...currentSetParticipants],
         };
         try {
-            const cleanData = JSON.parse(JSON.stringify(updatedRounds));
-            await updateDoc(doc(db, "events", eventId), { rounds: cleanData });
+            const { error } = await supabase
+                .from('events')
+                .update({ rounds: updatedRounds })
+                .eq('id', eventId);
+
+            if (error) throw error;
             return true;
         } catch (e) {
-            console.error("Firestore Error:", e);
+            console.error("Supabase Error:", e);
             return false;
         }
     };
@@ -267,7 +276,7 @@ export default function EventDetails() {
         setCurrentSetParticipants(prev => prev.map(p => {
             if (p.participantId !== participantId) return p;
             if (type === 'Q') {
-                // Explicitly set rank to undefined to satisfy Firestore if needed (though sanitized anyway)
+                // Explicitly set rank to undefined
                 return { ...p, qualified: !p.qualified, rank: undefined };
             } else {
                 if (p.rank === type) {
@@ -286,7 +295,7 @@ export default function EventDetails() {
             if (success) {
                 setCurrentSetParticipants([]);
                 setCurrentSetNumber(prev => prev + 1);
-                await fetchEvent();
+                fetchEvent();
             } else {
                 alert("Failed to save result. Please check connection.");
             }
@@ -316,10 +325,15 @@ export default function EventDetails() {
                 participants: []
             });
 
-            await updateDoc(doc(db, "events", eventId), {
-                rounds: updatedRounds,
-                currentRoundIndex: nextIndex
-            });
+            const { error } = await supabase
+                .from('events')
+                .update({
+                    rounds: updatedRounds,
+                    current_round_index: nextIndex
+                })
+                .eq('id', eventId);
+
+            if (error) throw error;
 
             // 3. Reset Local State
             setActiveTab(String(nextIndex));
@@ -328,8 +342,7 @@ export default function EventDetails() {
             setIsManagerOpen(false);
 
             // 4. Refresh
-            const snap = await getDoc(doc(db, "events", eventId));
-            if (snap.exists()) setEvent({ id: snap.id, ...snap.data() } as Event);
+            fetchEvent();
 
         } catch (e) { console.error(e); alert("Failed to advance round."); }
         setSaving(false);
@@ -343,7 +356,12 @@ export default function EventDetails() {
             const curIdx = event.currentRoundIndex || 0;
             if (updatedRounds[curIdx]) {
                 updatedRounds[curIdx].name = "Final";
-                await updateDoc(doc(db, "events", eventId), { rounds: updatedRounds });
+                const { error } = await supabase
+                    .from('events')
+                    .update({ rounds: updatedRounds })
+                    .eq('id', eventId);
+
+                if (error) throw error;
                 setIsManagerOpen(false);
                 fetchEvent();
             }
@@ -361,11 +379,15 @@ export default function EventDetails() {
             const updatedRounds = [...event.rounds];
             updatedRounds[activeRoundIndex].name = renameRoundName.trim();
 
-            await updateDoc(doc(db, "events", eventId), { rounds: updatedRounds });
+            const { error } = await supabase
+                .from('events')
+                .update({ rounds: updatedRounds })
+                .eq('id', eventId);
+
+            if (error) throw error;
 
             setIsManagerOpen(false);
-            const snap = await getDoc(doc(db, "events", eventId));
-            if (snap.exists()) setEvent({ id: snap.id, ...snap.data() } as Event);
+            fetchEvent();
         } catch (e) { console.error(e); alert("Failed to rename."); }
         setSaving(false);
     };
@@ -380,14 +402,18 @@ export default function EventDetails() {
             const updatedRounds = [...event.rounds];
             updatedRounds[event.currentRoundIndex].status = "completed";
 
-            await updateDoc(doc(db, "events", eventId), {
-                rounds: updatedRounds,
-                status: "completed"
-            });
+            const { error } = await supabase
+                .from('events')
+                .update({
+                    rounds: updatedRounds,
+                    status: "completed"
+                })
+                .eq('id', eventId);
+
+            if (error) throw error;
 
             setIsManagerOpen(false);
-            const snap = await getDoc(doc(db, "events", eventId));
-            if (snap.exists()) setEvent({ id: snap.id, ...snap.data() } as Event);
+            fetchEvent();
         } catch (e) { console.error(e); }
         setSaving(false);
     };

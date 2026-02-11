@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { supabase } from "../../lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Input } from "../../components/ui/input";
@@ -37,16 +36,15 @@ export default function OfftrackResults() {
 
     const fetchData = async () => {
         try {
-            const [eSnap, pSnap, tSnap, dSnap] = await Promise.all([
-                getDocs(collection(db, "events")),
-                getDocs(collection(db, "participants")),
-                getDocs(collection(db, "teams")),
-                getDocs(collection(db, "departments")),
-            ]);
-            setEvents(eSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Event[]);
-            setParticipants(pSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Participant[]);
-            setTeams(tSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[]);
-            setDepartments(dSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Department[]);
+            const { data: eData } = await supabase.from('events').select('*');
+            const { data: pData } = await supabase.from('participants').select('*');
+            const { data: tData } = await supabase.from('teams').select('*');
+            const { data: dData } = await supabase.from('departments').select('*');
+
+            setEvents((eData || []) as Event[]);
+            setParticipants((pData || []) as Participant[]);
+            setTeams((tData || []) as Team[]);
+            setDepartments((dData || []) as Department[]);
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {

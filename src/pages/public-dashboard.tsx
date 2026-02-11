@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -11,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Loader2, Trophy, Clock, Users, User, Medal, Award, UserPlus, Search } from "lucide-react";
-import type { Event, Participant, Department, Team, Batch } from "../types";
+import type { Event, Participant, Department, Team, Batch, Round, RoundParticipant } from "../types";
 
 export default function PublicDashboard() {
     const [events, setEvents] = useState<Event[]>([]);
@@ -48,19 +47,70 @@ export default function PublicDashboard() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [eventsSnap, partsSnap, deptsSnap, teamsSnap, batchesSnap] = await Promise.all([
-                    getDocs(collection(db, "events")),
-                    getDocs(collection(db, "participants")),
-                    getDocs(collection(db, "departments")),
-                    getDocs(collection(db, "teams")),
-                    getDocs(collection(db, "batches"))
+                const [eventsRes, partsRes, deptsRes, teamsRes, batchesRes] = await Promise.all([
+                    supabase.from('events').select('*'),
+                    supabase.from('participants').select('*'),
+                    supabase.from('departments').select('*'),
+                    supabase.from('teams').select('*'),
+                    supabase.from('batches').select('*')
                 ]);
 
-                setEvents(eventsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Event[]);
-                setParticipants(partsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Participant[]);
-                setDepartments(deptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Department[]);
-                setTeams(teamsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Team[]);
-                setBatches(batchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Batch[]);
+                if (eventsRes.error) throw eventsRes.error;
+                if (partsRes.error) throw partsRes.error;
+                if (deptsRes.error) throw deptsRes.error;
+                if (teamsRes.error) throw teamsRes.error;
+                if (batchesRes.error) throw batchesRes.error;
+
+                const mappedEvents = eventsRes.data.map((e: any) => ({
+                    id: e.id,
+                    name: e.name,
+                    type: e.type,
+                    gender: e.gender,
+                    status: e.status,
+                    rounds: e.rounds, // Assuming JSON structure is compatible
+                    currentRoundIndex: e.current_round_index,
+                    participants: e.participants,
+                    assignedStaffId: e.assigned_staff_id,
+                    winnerIds: e.winner_ids,
+                    teamSize: e.team_size,
+                    points1st: e.points_1st,
+                    points2nd: e.points_2nd,
+                    points3rd: e.points_3rd
+                })) as Event[];
+                setEvents(mappedEvents);
+
+                const mappedParticipants = partsRes.data.map((p: any) => ({
+                    id: p.id,
+                    name: p.name,
+                    registerNumber: p.register_number,
+                    departmentId: p.department_id,
+                    batchId: p.batch_id,
+                    semester: p.semester,
+                    gender: p.gender,
+                    chestNumber: p.chest_number,
+                    totalPoints: p.total_points,
+                    individualWins: p.individual_wins
+                })) as Participant[];
+                setParticipants(mappedParticipants);
+
+                setDepartments(deptsRes.data as Department[]);
+
+                const mappedTeams = teamsRes.data.map((t: any) => ({
+                    id: t.id,
+                    name: t.name,
+                    eventId: t.event_id,
+                    departmentId: t.department_id,
+                    memberIds: t.member_ids
+                })) as Team[];
+                setTeams(mappedTeams);
+
+                const mappedBatches = batchesRes.data.map((b: any) => ({
+                    id: b.id,
+                    name: b.name,
+                    departmentId: b.department_id
+                })) as Batch[];
+                setBatches(mappedBatches);
+
             } catch (error) {
                 console.error("Error fetching data:", error);
             } finally {
@@ -129,8 +179,8 @@ export default function PublicDashboard() {
         });
 
         events.forEach(event => {
-            event.rounds?.forEach(round => {
-                round.participants?.forEach(result => {
+            event.rounds?.forEach((round: Round) => {
+                round.participants?.forEach((result: RoundParticipant) => {
                     if (result.rank && event.type === 'individual') {
                         const participantId = result.participantId;
                         const partStat = partStatsMap.get(participantId);
@@ -213,8 +263,20 @@ export default function PublicDashboard() {
             });
 
             // Refresh participants data
-            const partsSnap = await getDocs(collection(db, "participants"));
-            setParticipants(partsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Participant[]);
+            const { data, error } = await supabase.from('participants').select('*');
+            if (error) throw error;
+            setParticipants(data.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                registerNumber: p.register_number,
+                departmentId: p.department_id,
+                batchId: p.batch_id,
+                semester: p.semester,
+                gender: p.gender,
+                chestNumber: p.chest_number,
+                totalPoints: p.total_points,
+                individualWins: p.individual_wins
+            })) as Participant[]);
 
         } catch (error: any) {
             console.error("Error during registration:", error);
@@ -235,17 +297,45 @@ export default function PublicDashboard() {
         setSearching(true);
         try {
             // Only search by register number
-            const q = query(collection(db, "participants"), where("registerNumber", "==", lookupQuery.trim()));
-            const snapshot = await getDocs(q);
+            const { data: participantsData, error } = await supabase
+                .from('participants')
+                .select('*')
+                .eq('register_number', lookupQuery.trim());
 
-            if (!snapshot.empty) {
-                const participant = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Participant;
+            if (error) throw error;
+
+            if (participantsData && participantsData.length > 0) {
+                const p = participantsData[0];
+                const participant: Participant = {
+                    id: p.id,
+                    name: p.name,
+                    registerNumber: p.register_number,
+                    departmentId: p.department_id,
+                    batchId: p.batch_id,
+                    semester: p.semester,
+                    gender: p.gender,
+                    chestNumber: p.chest_number,
+                    totalPoints: p.total_points,
+                    individualWins: p.individual_wins
+                };
 
                 // Find events this participant is registered for
-                const eventsSnapshot = await getDocs(collection(db, "events"));
-                const participantEvents = eventsSnapshot.docs
-                    .map(doc => ({ id: doc.id, ...doc.data() } as Event))
-                    .filter(event => event.participants?.includes(participant.id));
+                // We fetch all events for now as we did in original code. 
+                // Optimized way would be M2M query but keeping it simple for migration.
+                const { data: eventsData, error: evError } = await supabase.from('events').select('*');
+                if (evError) throw evError;
+
+                const eventsList = eventsData.map((e: any) => ({
+                    id: e.id,
+                    ...e,
+                    // map other fields if needed, but for simple lookup check this might be enough or map properly
+                    name: e.name,
+                    gender: e.gender,
+                    status: e.status,
+                    participants: e.participants // Assuming array of strings
+                })) as Event[];
+
+                const participantEvents = eventsList.filter(event => event.participants?.includes(participant.id));
 
                 setLookupResult({ participant, events: participantEvents });
             } else {
