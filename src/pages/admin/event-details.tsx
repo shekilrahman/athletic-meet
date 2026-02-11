@@ -88,7 +88,14 @@ export default function AdminEventDetails() {
 
             if (data) {
                 // Ensure data matches Event type
-                const eventData = data as Event;
+                const eventData = {
+                    ...data,
+                    teamSize: data.team_size || data.teamSize, // Handle snake_case from DB
+                    points1st: data.points_1st || data.points1st, // potential other snake_case
+                    points2nd: data.points_2nd || data.points2nd,
+                    points3rd: data.points_3rd || data.points3rd,
+                } as Event;
+
                 setEvent(eventData);
                 if (eventData.type === "group" && eventData.teamSize) {
                     setTeamChestNos(Array(eventData.teamSize).fill(""));
@@ -124,7 +131,16 @@ export default function AdminEventDetails() {
 
                 if (teamsError) throw teamsError;
 
-                const teamsList = teamsData as Team[];
+                if (teamsError) throw teamsError;
+
+                // Map snake_case to camelCase for Teams
+                const teamsList = (teamsData || []).map((t: any) => ({
+                    id: t.id,
+                    name: t.name,
+                    eventId: t.event_id,
+                    departmentId: t.department_id,
+                    memberIds: t.member_ids || []
+                })) as Team[];
 
                 // Fetch members for all teams
                 // We need to fetch all participants that are in any of these teams
@@ -139,18 +155,7 @@ export default function AdminEventDetails() {
 
                     const membersMap = new Map((membersData || []).map((p: any) => [
                         p.id,
-                        {
-                            id: p.id,
-                            name: p.name,
-                            registerNumber: p.register_number,
-                            departmentId: p.department_id,
-                            batchId: p.batch_id,
-                            semester: p.semester,
-                            gender: p.gender,
-                            chestNumber: p.chest_number,
-                            totalPoints: p.total_points,
-                            individualWins: p.individual_wins
-                        } as Participant
+                        mapParticipant(p)
                     ]));
 
                     const teamsWithMembers = teamsList.map(t => ({
@@ -222,6 +227,20 @@ export default function AdminEventDetails() {
         if (event) fetchParticipants();
     }, [event, fetchParticipants]);
 
+    // Helper to map DB result to Participant
+    const mapParticipant = (p: any): Participant => ({
+        id: p.id,
+        name: p.name,
+        registerNumber: p.register_number,
+        departmentId: p.department_id,
+        batchId: p.batch_id,
+        semester: p.semester,
+        gender: p.gender,
+        chestNumber: p.chest_number,
+        totalPoints: p.total_points,
+        individualWins: p.individual_wins
+    });
+
     // Search handler
     const handleSearch = async (chestNo: string) => {
         const term = chestNo.toUpperCase(); // Force uppercase
@@ -247,7 +266,7 @@ export default function AdminEventDetails() {
             return;
         }
 
-        const p = data[0] as Participant;
+        const p = mapParticipant(data[0]);
 
         if (event.gender !== "mixed" && p.gender !== event.gender) {
             setSearchError(`Gender mismatch (${p.gender})`);
@@ -302,7 +321,7 @@ export default function AdminEventDetails() {
             return;
         }
 
-        const p = data[0] as Participant;
+        const p = mapParticipant(data[0]);
 
         if (event.gender !== "mixed" && p.gender !== event.gender) {
             newErrors[index] = "Wrong gender";
@@ -322,6 +341,12 @@ export default function AdminEventDetails() {
         newMembers[index] = p;
         setTeamMembers(newMembers);
         setTeamErrors(newErrors);
+    };
+
+    // Helper to open create form with pre-filled register number
+    const openCreateFormWithPreFill = (regNo: string) => {
+        setNewParticipant(prev => ({ ...prev, registerNumber: regNo }));
+        setIsCreating(true);
     };
 
     // Add individual participant
@@ -825,16 +850,28 @@ export default function AdminEventDetails() {
                                                     <div key={i} className="flex gap-2 items-center">
                                                         <span className="text-xs text-muted-foreground w-6">{i + 1}.</span>
                                                         <Input
-                                                            className="w-28"
+                                                            className="w-28 uppercase"
                                                             placeholder="Chest/Reg No"
                                                             value={teamChestNos[i] || ""}
-                                                            onChange={e => handleTeamMemberSearch(i, e.target.value)}
+                                                            onChange={e => handleTeamMemberSearch(i, e.target.value.toUpperCase())}
                                                         />
-                                                        <div className="text-sm flex-1 truncate">
+                                                        <div className="text-sm flex-1 truncate flex items-center gap-2">
                                                             {teamMembers[i] ? (
                                                                 <span className="text-green-600">{teamMembers[i]?.name}</span>
                                                             ) : teamErrors[i] ? (
-                                                                <span className="text-red-500 text-xs">{teamErrors[i]}</span>
+                                                                <>
+                                                                    <span className="text-red-500 text-xs">{teamErrors[i]}</span>
+                                                                    {teamErrors[i] === "Not found" && (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="secondary"
+                                                                            className="h-6 text-xs px-2"
+                                                                            onClick={() => openCreateFormWithPreFill(teamChestNos[i])}
+                                                                        >
+                                                                            Register
+                                                                        </Button>
+                                                                    )}
+                                                                </>
                                                             ) : null}
                                                         </div>
                                                     </div>

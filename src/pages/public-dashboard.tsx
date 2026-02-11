@@ -207,6 +207,39 @@ export default function PublicDashboard() {
                                 else if (result.rank === 3) deptStat.bronze++;
                             }
                         }
+                    } else if (result.rank && event.type === 'group') {
+                        const teamId = result.participantId;
+                        // For group events, participantId in the result is the Team ID
+                        const team = teams.find(t => t.id === teamId);
+
+                        if (team && team.departmentId) {
+                            const deptStat = deptStatsMap.get(team.departmentId);
+                            if (deptStat) {
+                                let points = 0;
+                                if (result.rank === 1) {
+                                    points = event.points1st || 5;
+                                    deptStat.gold++;
+                                } else if (result.rank === 2) {
+                                    points = event.points2nd || 3;
+                                    deptStat.silver++;
+                                } else if (result.rank === 3) {
+                                    points = event.points3rd || 1;
+                                    deptStat.bronze++;
+                                }
+                                deptStat.points += points;
+
+                                // Credit each team member individually
+                                team.memberIds?.forEach(memberId => {
+                                    const partStat = partStatsMap.get(memberId);
+                                    if (partStat) {
+                                        partStat.points += points;
+                                        if (result.rank === 1) partStat.gold++;
+                                        else if (result.rank === 2) partStat.silver++;
+                                        else if (result.rank === 3) partStat.bronze++;
+                                    }
+                                });
+                            }
+                        }
                     }
                 });
             });

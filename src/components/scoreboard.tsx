@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import type { Department, Participant, Event, Round, RoundParticipant } from "../types";
+import type { Department, Participant, Event, Round, RoundParticipant, Team } from "../types";
 import { Trophy, Medal, User, Loader2 } from "lucide-react";
 
 interface ParticipantStats {
@@ -38,15 +38,17 @@ export default function Scoreboard() {
         const fetchData = async () => {
             try {
                 // Fetch base data
-                const [deptRes, partRes, eventRes] = await Promise.all([
+                const [deptRes, partRes, eventRes, teamsRes] = await Promise.all([
                     supabase.from('departments').select('*'),
                     supabase.from('participants').select('*'),
-                    supabase.from('events').select('*')
+                    supabase.from('events').select('*'),
+                    supabase.from('teams').select('*')
                 ]);
 
                 if (deptRes.error) throw deptRes.error;
                 if (partRes.error) throw partRes.error;
                 if (eventRes.error) throw eventRes.error;
+                if (teamsRes.error) throw teamsRes.error;
 
                 const deptData = deptRes.data as Department[];
                 setDepartments(deptData);
@@ -80,6 +82,14 @@ export default function Scoreboard() {
                     points2nd: e.points_2nd,
                     points3rd: e.points_3rd
                 })) as Event[];
+
+                const teamsData = teamsRes.data.map((t: any) => ({
+                    id: t.id,
+                    name: t.name,
+                    eventId: t.event_id,
+                    departmentId: t.department_id,
+                    memberIds: t.member_ids || []
+                })) as Team[];
 
                 // Calculate points and medals from event results
                 const partStatsMap = new Map<string, ParticipantStats>();
@@ -117,12 +127,11 @@ export default function Scoreboard() {
                 eventData.forEach(event => {
                     event.rounds?.forEach((round: Round) => {
                         round.participants?.forEach((result: RoundParticipant) => {
-                            if (result.rank) {
+                            if (result.rank && event.type === 'individual') {
                                 const participantId = result.participantId;
                                 const partStat = partStatsMap.get(participantId);
 
                                 if (partStat) {
-                                    // Award points and medals based on rank using event-specific points
                                     let points = 0;
                                     if (result.rank === 1) {
                                         points = event.points1st || 5;
@@ -137,13 +146,44 @@ export default function Scoreboard() {
 
                                     partStat.points += points;
 
-                                    // Update department stats
                                     const deptStat = deptStatsMap.get(partStat.departmentId);
                                     if (deptStat) {
                                         deptStat.points += points;
                                         if (result.rank === 1) deptStat.gold++;
                                         else if (result.rank === 2) deptStat.silver++;
                                         else if (result.rank === 3) deptStat.bronze++;
+                                    }
+                                }
+                            } else if (result.rank && event.type === 'group') {
+                                const teamId = result.participantId;
+                                const team = teamsData.find(t => t.id === teamId);
+
+                                if (team && team.departmentId) {
+                                    const deptStat = deptStatsMap.get(team.departmentId);
+                                    if (deptStat) {
+                                        let points = 0;
+                                        if (result.rank === 1) {
+                                            points = event.points1st || 5;
+                                            deptStat.gold++;
+                                        } else if (result.rank === 2) {
+                                            points = event.points2nd || 3;
+                                            deptStat.silver++;
+                                        } else if (result.rank === 3) {
+                                            points = event.points3rd || 1;
+                                            deptStat.bronze++;
+                                        }
+                                        deptStat.points += points;
+
+                                        // Credit each team member individually
+                                        team.memberIds?.forEach(memberId => {
+                                            const partStat = partStatsMap.get(memberId);
+                                            if (partStat) {
+                                                partStat.points += points;
+                                                if (result.rank === 1) partStat.gold++;
+                                                else if (result.rank === 2) partStat.silver++;
+                                                else if (result.rank === 3) partStat.bronze++;
+                                            }
+                                        });
                                     }
                                 }
                             }
