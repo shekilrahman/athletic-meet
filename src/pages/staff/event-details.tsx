@@ -64,6 +64,11 @@ export default function EventDetails() {
     const [isNextRoundFinal, setIsNextRoundFinal] = useState(false);
     const [renameRoundName, setRenameRoundName] = useState("");
 
+    // ─── Edit Result State ──────────────────────────────────────
+    const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
+    const [editRank, setEditRank] = useState<number | undefined>(undefined);
+    const [editQualified, setEditQualified] = useState<boolean>(false);
+
     // ─── Fetching ───────────────────────────────────────────────
     const fetchEvent = useCallback(async () => {
         if (!eventId) return;
@@ -414,6 +419,93 @@ export default function EventDetails() {
         setSaving(false);
     };
 
+    // ─── Edit Result Actions ────────────────────────────────────
+    const handleEditClick = (participantId: string, currentRank?: number, currentQualified?: boolean) => {
+        setEditingParticipantId(participantId);
+        setEditRank(currentRank);
+        setEditQualified(!!currentQualified);
+    };
+
+    const saveEditedResult = async () => {
+        if (!event || !eventId || !editingParticipantId || !viewedRound) return;
+        setSaving(true);
+        try {
+            const updatedRounds = [...event.rounds];
+            const curRound = updatedRounds[activeRoundIndex];
+
+            const updatedParticipants = curRound.participants.map(p => {
+                if (p.participantId === editingParticipantId) {
+                    return {
+                        ...p,
+                        rank: editRank,
+                        qualified: editQualified
+                    };
+                }
+                // If unique ranks are enforced (e.g. only one first place), we should clear others with same rank
+                // For now, allowing overrides but one could implement unique constraint here
+                if (editRank && p.rank === editRank && p.participantId !== editingParticipantId) {
+                    // Optional: Clear conflicting rank? 
+                    // return { ...p, rank: undefined };
+                    // For safety/flexibility, let's NOT auto-clear others, just update target.
+                }
+                return p;
+            });
+
+            updatedRounds[activeRoundIndex] = {
+                ...curRound,
+                participants: updatedParticipants
+            };
+
+            const { error } = await supabase
+                .from('events')
+                .update({ rounds: updatedRounds })
+                .eq('id', eventId);
+
+            if (error) throw error;
+
+            setEditingParticipantId(null);
+            fetchEvent();
+
+        } catch (e) {
+            console.error("Failed to update result:", e);
+            alert("Failed to update result");
+        }
+        setSaving(false);
+    };
+
+    const deleteResult = async () => {
+        if (!event || !eventId || !editingParticipantId || !viewedRound) return;
+        if (!confirm("Are you sure you want to reset this participant's status? They will be moved back to 'Waiting'.")) return;
+        setSaving(true);
+        try {
+            const updatedRounds = [...event.rounds];
+            const curRound = updatedRounds[activeRoundIndex];
+
+            // Filter out the participant from the round's participants list
+            const updatedParticipants = curRound.participants.filter(p => p.participantId !== editingParticipantId);
+
+            updatedRounds[activeRoundIndex] = {
+                ...curRound,
+                participants: updatedParticipants
+            };
+
+            const { error } = await supabase
+                .from('events')
+                .update({ rounds: updatedRounds })
+                .eq('id', eventId);
+
+            if (error) throw error;
+
+            setEditingParticipantId(null);
+            fetchEvent();
+
+        } catch (e) {
+            console.error("Failed to delete result:", e);
+            alert("Failed to delete result");
+        }
+        setSaving(false);
+    };
+
     const handleCloseEvent = async () => {
         if (!event || !eventId) return;
         setSaving(true);
@@ -658,8 +750,23 @@ export default function EventDetails() {
                                         <div className="text-[10px] text-muted-foreground truncate">{subText}</div>
                                     </div>
                                 </div>
+
                                 {/* Status / Actions */}
-                                <div className="flex-shrink-0">
+                                <div className="flex-shrink-0 flex items-center gap-2">
+                                    {/* Edit Button for Ranked/Qualified/Eliminated */}
+                                    {!isRacing && (status === 'ranked' || status === 'qualified' || status === 'eliminated') && isCurrentRoundActive && (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 w-7 p-0 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-muted-foreground"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditClick(id, assigned?.rank, assigned?.qualified);
+                                            }}
+                                        >
+                                            <Settings className="h-3.5 w-3.5" />
+                                        </Button>
+                                    )}
                                     {isRacing ? (
                                         isFinalRound ? (
                                             <div className="flex gap-1">
@@ -746,6 +853,86 @@ export default function EventDetails() {
                     )}
                 </div>
             )}
-        </div>
+
+
+            {/* ── EDIT DIALOG ────────────────────────────────────────── */}
+            <Dialog open={!!editingParticipantId} onOpenChange={(open) => !open && setEditingParticipantId(null)}>
+                <DialogContent className="max-w-sm rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Edit Result</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-6 pt-4">
+                        {/* Rank Selection */}
+                        <div className="space-y-3">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rank / Position</Label>
+                            <div className="flex gap-2">
+                                {[1, 2, 3].map(rank => (
+                                    <button
+                                        key={rank}
+                                        onClick={() => setEditRank(rank === editRank ? undefined : rank)} // Toggle
+                                        className={`
+                                        flex-1 h-12 rounded-xl flex items-center justify-center gap-2 font-bold border-2 transition-all
+                                        ${editRank === rank
+                                                ? rank === 1 ? "bg-yellow-50 border-yellow-500 text-yellow-700"
+                                                    : rank === 2 ? "bg-gray-50 border-gray-400 text-gray-700"
+                                                        : "bg-amber-50 border-amber-600 text-amber-800"
+                                                : "bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800 text-muted-foreground hover:border-gray-300"
+                                            }
+                                    `}
+                                    >
+                                        <Medal className={`h-5 w-5 ${rank === 1 ? "text-yellow-500" : rank === 2 ? "text-gray-400" : "text-amber-700"
+                                            } ${editRank === rank ? "fill-current" : ""}`} />
+                                        {rank}
+                                    </button>
+                                ))}
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full text-xs h-8"
+                                onClick={() => setEditRank(undefined)}
+                            >
+                                Clear Rank
+                            </Button>
+                        </div>
+
+                        {/* Qualification */}
+                        <div className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+                            <Label className="cursor-pointer" htmlFor="edit-qualified">Qualified for Next Round</Label>
+                            <input
+                                type="checkbox"
+                                id="edit-qualified"
+                                checked={editQualified}
+                                onChange={(e) => setEditQualified(e.target.checked)}
+                                className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                            />
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <Button variant="ghost" className="flex-1" onClick={() => setEditingParticipantId(null)}>
+                                Cancel
+                            </Button>
+                            <Button className="flex-1" onClick={saveEditedResult} disabled={saving}>
+                                {saving ? <Loader2 className="animate-spin h-4 w-4" /> : "Save Changes"}
+                            </Button>
+                        </div>
+
+                        <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 h-8 text-xs"
+                                onClick={deleteResult}
+                                disabled={saving}
+                            >
+                                Reset Status to Waiting
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+        </div >
     );
 }
