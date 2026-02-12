@@ -509,7 +509,7 @@ export default function PublicDashboard() {
                 setRequestDialogOpen(false);
                 setRequestMessage(null);
                 setRequestEventId("");
-            }, 2000);
+            }, 1000);
         } catch (error: any) {
             console.error("Error asking for participation:", error);
             setRequestMessage({ type: 'error', text: error.message || 'Failed to submit request.' });
@@ -995,6 +995,37 @@ export default function PublicDashboard() {
 
                                             <Card>
                                                 <CardHeader>
+                                                    <CardTitle className="text-lg">Participation Requests ({lookupResult.requests.length})</CardTitle>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    {lookupResult.requests.length === 0 ? (
+                                                        <p className="text-muted-foreground text-center py-4">No pending or previous requests</p>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            {lookupResult.requests
+                                                                .map(({ event, status }) => (
+                                                                    <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md gap-2">
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="font-medium">{event.name}</div>
+                                                                            <div className="text-xs text-muted-foreground">
+                                                                                {event.type} • {event.gender}
+                                                                            </div>
+                                                                        </div>
+                                                                        <Badge variant={
+                                                                            status === 'approved' ? 'default' :
+                                                                                status === 'pending' ? 'secondary' : 'destructive'
+                                                                        }>
+                                                                            {status}
+                                                                        </Badge>
+                                                                    </div>
+                                                                ))}
+                                                        </div>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+
+                                            <Card>
+                                                <CardHeader>
                                                     <CardTitle className="text-lg">Registered Events ({lookupResult.events.length})</CardTitle>
                                                 </CardHeader>
                                                 <CardContent>
@@ -1040,37 +1071,6 @@ export default function PublicDashboard() {
                                                                     </div>
                                                                 </div>
                                                             ))}
-                                                        </div>
-                                                    )}
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card>
-                                                <CardHeader>
-                                                    <CardTitle className="text-lg">Participation Requests ({lookupResult.requests.length})</CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    {lookupResult.requests.length === 0 ? (
-                                                        <p className="text-muted-foreground text-center py-4">No pending or previous requests</p>
-                                                    ) : (
-                                                        <div className="space-y-2">
-                                                            {lookupResult.requests
-                                                                .map(({ event, status }) => (
-                                                                    <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md gap-2">
-                                                                        <div className="flex-1 min-w-0">
-                                                                            <div className="font-medium">{event.name}</div>
-                                                                            <div className="text-xs text-muted-foreground">
-                                                                                {event.type} • {event.gender}
-                                                                            </div>
-                                                                        </div>
-                                                                        <Badge variant={
-                                                                            status === 'approved' ? 'default' :
-                                                                                status === 'pending' ? 'secondary' : 'destructive'
-                                                                        }>
-                                                                            {status}
-                                                                        </Badge>
-                                                                    </div>
-                                                                ))}
                                                         </div>
                                                     )}
                                                 </CardContent>
