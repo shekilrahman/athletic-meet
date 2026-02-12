@@ -975,12 +975,18 @@ export default function PublicDashboard() {
                                             </Card>
 
                                             {settings.enable_requests && (
-                                                <div className="flex justify-center my-4">
-                                                    <Button variant="outline" onClick={() => setRequestDialogOpen(true)}>
-                                                        <UserPlus className="h-4 w-4 mr-2" />
-                                                        Request for event participation missing in list
-                                                    </Button>
-                                                </div>
+                                                <Card className="bg-muted/50 border-dashed">
+                                                    <CardContent className="py-4 flex flex-row items-center justify-between gap-4">
+                                                        <div className="space-y-1">
+                                                            <div className="font-medium text-sm">Event missing?</div>
+                                                            <div className="text-xs text-muted-foreground">Request participation for events not listed here</div>
+                                                        </div>
+                                                        <Button variant="secondary" size="sm" onClick={() => setRequestDialogOpen(true)} className="shrink-0">
+                                                            <UserPlus className="h-3.5 w-3.5 mr-2" />
+                                                            Request
+                                                        </Button>
+                                                    </CardContent>
+                                                </Card>
                                             )}
 
                                             <Card>
