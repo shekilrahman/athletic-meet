@@ -44,7 +44,7 @@ export default function PublicDashboard() {
     const [lookupResult, setLookupResult] = useState<{
         participant: Participant | null;
         events: { event: Event; rank: number | null }[];
-        requests: { event: Event; status: string }[];
+        requests: { event: Event; status: string; eventId: string }[];
     } | null>(null);
     const [searching, setSearching] = useState(false);
 
@@ -428,7 +428,8 @@ export default function PublicDashboard() {
                         gender: r.events?.gender,
                         status: r.events?.status,
                     } as Event,
-                    status: r.status
+                    status: r.status,
+                    eventId: r.event_id
                 }));
 
                 setLookupResult({
@@ -1131,7 +1132,7 @@ export default function PublicDashboard() {
                                             e.type === 'individual' &&
                                             (e.gender === lookupResult?.participant?.gender || e.gender === 'mixed') &&
                                             !lookupResult?.events.some(pe => pe.event.id === e.id) &&
-                                            !lookupResult?.requests.some(pr => pr.event.id === e.id && pr.status === 'pending')
+                                            !lookupResult?.requests.some(pr => (pr.eventId === e.id || pr.event.id === e.id) && pr.status === 'pending')
                                         )
                                         .map(e => (
                                             <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
