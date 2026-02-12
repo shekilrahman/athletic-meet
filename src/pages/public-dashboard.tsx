@@ -9,7 +9,7 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
-import { Loader2, Trophy, Clock, Users, User, Medal, Award, UserPlus, Search, Download } from "lucide-react";
+import { Loader2, Trophy, Clock, Users, User, Medal, Award, UserPlus, Search, Download, Trash2 } from "lucide-react";
 import type { Event, Participant, Department, Team, Batch, Round, RoundParticipant } from "../types";
 import { generateCertificate, type CertificateType } from "../lib/certificate-generator";
 import { getSiteSettings, type SiteSettings } from "../lib/settings-service";
@@ -44,7 +44,7 @@ export default function PublicDashboard() {
     const [lookupResult, setLookupResult] = useState<{
         participant: Participant | null;
         events: { event: Event; rank: number | null }[];
-        requests: { event: Event; status: string; eventId: string }[];
+        requests: { event: Event; status: string; eventId: string; id: string }[];
     } | null>(null);
     const [searching, setSearching] = useState(false);
 
@@ -429,7 +429,8 @@ export default function PublicDashboard() {
                         status: r.events?.status,
                     } as Event,
                     status: r.status,
-                    eventId: r.event_id
+                    eventId: r.event_id,
+                    id: r.id
                 }));
 
                 setLookupResult({
@@ -515,6 +516,24 @@ export default function PublicDashboard() {
             setRequestMessage({ type: 'error', text: error.message || 'Failed to submit request.' });
         } finally {
             setSubmittingRequest(false);
+        }
+    };
+
+    const handleDeleteRequest = async (requestId: string) => {
+        if (!confirm("Are you sure you want to cancel this request?")) return;
+
+        try {
+            const { error } = await supabase
+                .from('participation_requests')
+                .delete()
+                .eq('id', requestId);
+
+            if (error) throw error;
+
+            handleLookup();
+        } catch (error) {
+            console.error("Error deleting request:", error);
+            alert("Failed to delete request. Please try again.");
         }
     };
 
@@ -969,7 +988,7 @@ export default function PublicDashboard() {
                                                     </div>
                                                     <div className="flex justify-between">
                                                         <span className="text-muted-foreground">Department:</span>
-                                                        <span>{departments.find(d => d.id === lookupResult.participant?.departmentId)?.name || 'N/A'}</span>
+                                                        <span>{departments.find(d => d.id === lookupResult.participant?.departmentId)?.code || 'N/A'}</span>
                                                     </div>
                                                     <div className="flex justify-between">
                                                         <span className="text-muted-foreground">Gender:</span>
@@ -1003,7 +1022,7 @@ export default function PublicDashboard() {
                                                     ) : (
                                                         <div className="space-y-2">
                                                             {lookupResult.requests
-                                                                .map(({ event, status }) => (
+                                                                .map(({ event, status, id }) => (
                                                                     <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md gap-2">
                                                                         <div className="flex-1 min-w-0">
                                                                             <div className="font-medium">{event.name}</div>
@@ -1011,12 +1030,25 @@ export default function PublicDashboard() {
                                                                                 {event.type} • {event.gender}
                                                                             </div>
                                                                         </div>
-                                                                        <Badge variant={
-                                                                            status === 'approved' ? 'default' :
-                                                                                status === 'pending' ? 'secondary' : 'destructive'
-                                                                        }>
-                                                                            {status}
-                                                                        </Badge>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Badge variant={
+                                                                                status === 'approved' ? 'default' :
+                                                                                    status === 'pending' ? 'secondary' : 'destructive'
+                                                                            }>
+                                                                                {status}
+                                                                            </Badge>
+                                                                            {status === 'pending' && (
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                                                                    onClick={() => handleDeleteRequest(id)}
+                                                                                    title="Cancel Request"
+                                                                                >
+                                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                                </Button>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                 ))}
                                                         </div>
