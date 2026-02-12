@@ -8,9 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Label } from "../components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { Loader2, Trophy, Clock, Users, User, Medal, Award, UserPlus, Search } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
+import { Loader2, Trophy, Clock, Users, User, Medal, Award, UserPlus, Search, Download } from "lucide-react";
 import type { Event, Participant, Department, Team, Batch, Round, RoundParticipant } from "../types";
+import { generateCertificate, type CertificateType } from "../lib/certificate-generator";
+import { getSiteSettings, type SiteSettings } from "../lib/settings-service";
 
 export default function PublicDashboard() {
     const [events, setEvents] = useState<Event[]>([]);
@@ -18,6 +20,7 @@ export default function PublicDashboard() {
     const [departments, setDepartments] = useState<Department[]>([]);
     const [teams, setTeams] = useState<Team[]>([]);
     const [batches, setBatches] = useState<Batch[]>([]);
+    const [settings, setSettings] = useState<SiteSettings>({ enable_downloads: true, enable_requests: true });
     const [loading, setLoading] = useState(true);
 
     // Dialog state
@@ -30,7 +33,7 @@ export default function PublicDashboard() {
         registerNumber: "",
         departmentId: "",
         batchId: "",
-        semester: 1,
+        semester: "1",
         gender: "male" as "male" | "female",
     });
     const [registering, setRegistering] = useState(false);
@@ -40,20 +43,30 @@ export default function PublicDashboard() {
     const [lookupQuery, setLookupQuery] = useState("");
     const [lookupResult, setLookupResult] = useState<{
         participant: Participant | null;
-        events: Event[];
+        events: { event: Event; rank: number | null }[];
+        requests: { event: Event; status: string }[];
     } | null>(null);
     const [searching, setSearching] = useState(false);
+
+    // Request Participation State
+    const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+    const [requestEventId, setRequestEventId] = useState("");
+    const [submittingRequest, setSubmittingRequest] = useState(false);
+    const [requestMessage, setRequestMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [eventsRes, partsRes, deptsRes, teamsRes, batchesRes] = await Promise.all([
+                const [eventsRes, partsRes, deptsRes, teamsRes, batchesRes, settingsData] = await Promise.all([
                     supabase.from('events').select('*'),
                     supabase.from('participants').select('*'),
                     supabase.from('departments').select('*'),
                     supabase.from('teams').select('*'),
-                    supabase.from('batches').select('*')
+                    supabase.from('batches').select('*'),
+                    getSiteSettings()
                 ]);
+
+                if (settingsData) setSettings(settingsData);
 
                 if (eventsRes.error) throw eventsRes.error;
                 if (partsRes.error) throw partsRes.error;
@@ -85,7 +98,7 @@ export default function PublicDashboard() {
                     registerNumber: p.register_number,
                     departmentId: p.department_id,
                     batchId: p.batch_id,
-                    semester: p.semester,
+                    semester: String(p.semester),
                     gender: p.gender,
                     chestNumber: p.chest_number,
                     totalPoints: p.total_points,
@@ -280,7 +293,7 @@ export default function PublicDashboard() {
                 registerNumber: "",
                 departmentId: "",
                 batchId: "",
-                semester: 1,
+                semester: "1",
                 gender: "male",
             });
 
@@ -293,7 +306,7 @@ export default function PublicDashboard() {
                 registerNumber: p.register_number,
                 departmentId: p.department_id,
                 batchId: p.batch_id,
-                semester: p.semester,
+                semester: String(p.semester),
                 gender: p.gender,
                 chestNumber: p.chest_number,
                 totalPoints: p.total_points,
@@ -334,7 +347,7 @@ export default function PublicDashboard() {
                     registerNumber: p.register_number,
                     departmentId: p.department_id,
                     batchId: p.batch_id,
-                    semester: p.semester,
+                    semester: String(p.semester),
                     gender: p.gender,
                     chestNumber: p.chest_number,
                     totalPoints: p.total_points,
@@ -342,35 +355,164 @@ export default function PublicDashboard() {
                 };
 
                 // Find events this participant is registered for
-                // We fetch all events for now as we did in original code. 
-                // Optimized way would be M2M query but keeping it simple for migration.
                 const { data: eventsData, error: evError } = await supabase.from('events').select('*');
                 if (evError) throw evError;
+
+                // Fetch teams this participant belongs to
+                // We need to fetch all teams and filter in JS because member_ids is a JSONB/Array and array containment syntax varies
+                const { data: teamsData, error: teamsError } = await supabase.from('teams').select('*');
+                if (teamsError) throw teamsError;
+
+                const participantTeams = teamsData.filter((t: any) =>
+                    Array.isArray(t.member_ids) && t.member_ids.includes(participant.id)
+                );
+                const participantTeamIds = participantTeams.map(t => t.id);
 
                 const eventsList = eventsData.map((e: any) => ({
                     id: e.id,
                     ...e,
-                    // map other fields if needed, but for simple lookup check this might be enough or map properly
                     name: e.name,
                     gender: e.gender,
                     status: e.status,
-                    participants: e.participants // Assuming array of strings
+                    rounds: e.rounds,
+                    participants: e.participants
                 })) as Event[];
 
-                const participantEvents = eventsList.filter(event => event.participants?.includes(participant.id));
+                const participantEvents = eventsList
+                    .filter(event => {
+                        if (event.type === 'group') {
+                            return event.participants && event.participants.some(pid => participantTeamIds.includes(pid));
+                        } else {
+                            return event.participants?.includes(participant.id);
+                        }
+                    })
+                    .map(event => {
+                        // Determine rank from final round data
+                        let rank: number | null = null;
+                        if (event.status === 'completed' && event.rounds) {
+                            for (const round of event.rounds) {
+                                // For group events, look for Team ID. For individual, look for Participant ID.
+                                const targetId = event.type === 'group'
+                                    ? participantTeamIds.find(tid => round.participants?.some((rp: RoundParticipant) => rp.participantId === tid))
+                                    : participant.id;
 
-                setLookupResult({ participant, events: participantEvents });
+                                if (targetId) {
+                                    const rp = round.participants?.find(
+                                        (rp: RoundParticipant) => rp.participantId === targetId
+                                    );
+                                    if (rp?.rank && rp.rank >= 1 && rp.rank <= 3) {
+                                        rank = rp.rank;
+                                    }
+                                }
+                            }
+                        }
+                        return { event, rank };
+                    });
+
+                // Fetch participation requests for this participant
+                const { data: requestsData, error: requestsError } = await supabase
+                    .from('participation_requests')
+                    .select('*, events(*)')
+                    .eq('participant_id', participant.id);
+
+                if (requestsError) throw requestsError;
+
+                const participantRequests = (requestsData || []).map((r: any) => ({
+                    event: {
+                        id: r.events.id,
+                        name: r.events.name,
+                        type: r.events.type,
+                        gender: r.events.gender,
+                        status: r.events.status,
+                    } as Event,
+                    status: r.status
+                }));
+
+                setLookupResult({
+                    participant,
+                    events: participantEvents,
+                    requests: participantRequests
+                });
             } else {
-                setLookupResult({ participant: null, events: [] });
+                setLookupResult({ participant: null, events: [], requests: [] });
             }
         } catch (error) {
             console.error("Error looking up participant:", error);
-            setLookupResult({ participant: null, events: [] });
+            setLookupResult({ participant: null, events: [], requests: [] });
         } finally {
             setSearching(false);
         }
     };
 
+
+
+    const handleRequestParticipation = async () => {
+        if (!lookupResult?.participant || !requestEventId) return;
+
+        setSubmittingRequest(true);
+        try {
+            // Check if already requested
+            const { data: existingRequests, error: checkError } = await supabase
+                .from('participation_requests')
+                .select('*')
+                .eq('participant_id', lookupResult.participant.id)
+                .eq('event_id', requestEventId)
+                .eq('status', 'pending');
+
+            if (checkError) throw checkError;
+
+            if (existingRequests && existingRequests.length > 0) {
+                setRequestMessage({ type: 'error', text: 'You already have a pending request for this event.' });
+                setSubmittingRequest(false);
+                return;
+            }
+
+            // Check if there's a rejected request to recycle
+            const { data: rejectedRequests } = await supabase
+                .from('participation_requests')
+                .select('id')
+                .eq('participant_id', lookupResult.participant.id)
+                .eq('event_id', requestEventId)
+                .eq('status', 'rejected')
+                .maybeSingle();
+
+            let error;
+            if (rejectedRequests) {
+                // Update rejected to pending
+                const { error: updateError } = await supabase
+                    .from('participation_requests')
+                    .update({ status: 'pending', created_at: new Date().toISOString() })
+                    .eq('id', rejectedRequests.id);
+                error = updateError;
+            } else {
+                // New insert
+                const { error: insertError } = await supabase.from('participation_requests').insert({
+                    participant_id: lookupResult.participant.id,
+                    event_id: requestEventId,
+                    status: 'pending'
+                });
+                error = insertError;
+            }
+
+            if (error) throw error;
+
+            setRequestMessage({ type: 'success', text: 'Request submitted successfully! Waiting for admin approval.' });
+
+            // Refresh lookup results to show the new request
+            handleLookup();
+
+            setTimeout(() => {
+                setRequestDialogOpen(false);
+                setRequestMessage(null);
+                setRequestEventId("");
+            }, 2000);
+        } catch (error: any) {
+            console.error("Error asking for participation:", error);
+            setRequestMessage({ type: 'error', text: error.message || 'Failed to submit request.' });
+        } finally {
+            setSubmittingRequest(false);
+        }
+    };
 
     const renderEventCard = (event: Event) => {
         const topResults = getTopParticipants(event);
@@ -731,8 +873,8 @@ export default function PublicDashboard() {
                             <div className="space-y-2">
                                 <Label htmlFor="semester">Semester</Label>
                                 <Select
-                                    value={String(registrationForm.semester)}
-                                    onValueChange={(v) => setRegistrationForm({ ...registrationForm, semester: Number(v) })}
+                                    value={registrationForm.semester}
+                                    onValueChange={(v) => setRegistrationForm({ ...registrationForm, semester: v })}
                                 >
                                     <SelectTrigger id="semester">
                                         <SelectValue placeholder="Select semester" />
@@ -832,6 +974,15 @@ export default function PublicDashboard() {
                                                 </CardContent>
                                             </Card>
 
+                                            {settings.enable_requests && (
+                                                <div className="flex justify-center my-4">
+                                                    <Button variant="outline" onClick={() => setRequestDialogOpen(true)}>
+                                                        <UserPlus className="h-4 w-4 mr-2" />
+                                                        Request to Join Other Events
+                                                    </Button>
+                                                </div>
+                                            )}
+
                                             <Card>
                                                 <CardHeader>
                                                     <CardTitle className="text-lg">Registered Events ({lookupResult.events.length})</CardTitle>
@@ -841,26 +992,81 @@ export default function PublicDashboard() {
                                                         <p className="text-muted-foreground text-center py-4">Not registered for any events yet</p>
                                                     ) : (
                                                         <div className="space-y-2">
-                                                            {lookupResult.events.map((event) => (
-                                                                <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md">
-                                                                    <div>
+                                                            {lookupResult.events.map(({ event, rank }) => (
+                                                                <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md gap-2">
+                                                                    <div className="flex-1 min-w-0">
                                                                         <div className="font-medium">{event.name}</div>
                                                                         <div className="text-xs text-muted-foreground">
                                                                             {event.type} • {event.gender}
                                                                         </div>
                                                                     </div>
-                                                                    <Badge variant={
-                                                                        event.status === 'completed' ? 'default' :
-                                                                            event.status === 'ongoing' ? 'destructive' : 'secondary'
-                                                                    }>
-                                                                        {event.status}
-                                                                    </Badge>
+                                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                                        {event.status === 'completed' && settings.enable_downloads && (
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="outline"
+                                                                                className={`text-xs ${rank === 1 ? 'border-yellow-500 text-yellow-700 hover:bg-yellow-50' :
+                                                                                    rank === 2 ? 'border-gray-400 text-gray-600 hover:bg-gray-50' :
+                                                                                        rank === 3 ? 'border-orange-500 text-orange-700 hover:bg-orange-50' :
+                                                                                            'border-blue-500 text-blue-700 hover:bg-blue-50'
+                                                                                    }`}
+                                                                                onClick={() => {
+                                                                                    const certType: CertificateType = rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : 'participation';
+                                                                                    generateCertificate({
+                                                                                        type: certType,
+                                                                                        participantName: lookupResult.participant!.name,
+                                                                                        eventName: event.name,
+                                                                                        departmentName: departments.find(d => d.id === lookupResult.participant?.departmentId)?.name || 'N/A',
+                                                                                        registerNumber: lookupResult.participant!.registerNumber,
+                                                                                        semester: lookupResult.participant!.semester,
+                                                                                        gender: lookupResult.participant!.gender,
+                                                                                    });
+                                                                                }}
+                                                                            >
+                                                                                <Download className="h-3 w-3 mr-1" />
+                                                                                {rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : 'Participation'}
+                                                                            </Button>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             ))}
                                                         </div>
                                                     )}
                                                 </CardContent>
                                             </Card>
+
+                                            <Card>
+                                                <CardHeader>
+                                                    <CardTitle className="text-lg">Participation Requests ({lookupResult.requests.filter(r => r.status !== 'approved').length})</CardTitle>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    {lookupResult.requests.filter(r => r.status !== 'approved').length === 0 ? (
+                                                        <p className="text-muted-foreground text-center py-4">No pending or previous requests</p>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            {lookupResult.requests
+                                                                .filter(r => r.status !== 'approved')
+                                                                .map(({ event, status }) => (
+                                                                    <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md gap-2">
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="font-medium">{event.name}</div>
+                                                                            <div className="text-xs text-muted-foreground">
+                                                                                {event.type} • {event.gender}
+                                                                            </div>
+                                                                        </div>
+                                                                        <Badge variant={
+                                                                            status === 'approved' ? 'default' :
+                                                                                status === 'pending' ? 'secondary' : 'destructive'
+                                                                        }>
+                                                                            {status}
+                                                                        </Badge>
+                                                                    </div>
+                                                                ))}
+                                                        </div>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+
                                         </>
                                     ) : (
                                         <Card className="border-2 border-orange-200 bg-orange-50 dark:bg-orange-950/20">
@@ -885,6 +1091,56 @@ export default function PublicDashboard() {
                             )}
                         </TabsContent>
                     </Tabs>
+                </DialogContent>
+            </Dialog>
+
+            {/* Request Participation Dialog */}
+            <Dialog open={requestDialogOpen} onOpenChange={setRequestDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Request Participation</DialogTitle>
+                        <DialogDescription>
+                            Select an event you wish to participate in. This request will be sent to the admin for approval.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {requestMessage && (
+                        <div className={`p-3 rounded-md text-sm ${requestMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {requestMessage.text}
+                        </div>
+                    )}
+
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="requestEvent">Select Event</Label>
+                            <Select value={requestEventId} onValueChange={setRequestEventId}>
+                                <SelectTrigger id="requestEvent">
+                                    <SelectValue placeholder="Choose an event" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {events
+                                        .filter(e =>
+                                            e.type === 'individual' &&
+                                            (e.gender === lookupResult?.participant?.gender || e.gender === 'mixed') &&
+                                            !lookupResult?.events.some(pe => pe.event.id === e.id) &&
+                                            !lookupResult?.requests.some(pr => pr.event.id === e.id && pr.status === 'pending')
+                                        )
+                                        .map(e => (
+                                            <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                                        ))
+                                    }
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setRequestDialogOpen(false)}>Cancel</Button>
+                        <Button onClick={handleRequestParticipation} disabled={submittingRequest || !requestEventId}>
+                            {submittingRequest ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                            Submit Request
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

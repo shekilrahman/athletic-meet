@@ -13,14 +13,24 @@ import {
     Users,
     Edit,
     ChevronRight,
+    Printer,
 } from "lucide-react";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "../../components/ui/table";
 import type { Event, Participant, Department, Batch, Team } from "../../types";
 
 // Helper function to display semester as group
-const getSemesterGroup = (sem: number): string => {
-    if (sem <= 2) return "S1/S2";
-    if (sem <= 4) return "S3/S4";
-    if (sem <= 6) return "S5/S6";
+const getSemesterGroup = (sem: number | string): string => {
+    const s = typeof sem === 'string' ? parseInt(sem) : sem;
+    if (s <= 2) return "S1/S2";
+    if (s <= 4) return "S3/S4";
+    if (s <= 6) return "S5/S6";
     return "S7/S8";
 };
 
@@ -42,6 +52,11 @@ export default function AdminEventDetails() {
         if (!id) return "Unknown";
         const d = departments.find(d => d.id === id);
         return d ? d.name : "Unknown";
+    };
+    const getDeptCode = (id?: string) => {
+        if (!id) return "-";
+        const d = departments.find(d => d.id === id);
+        return d ? d.code : "-";
     };
     const getBatchName = (id?: string) => batches.find(b => b.id === id)?.name || "Unknown";
 
@@ -66,7 +81,7 @@ export default function AdminEventDetails() {
         departmentId: "",
         batchId: "",
         gender: "male" as "male" | "female",
-        semester: 1,
+        semester: "1",
     });
 
     // Edit participant state
@@ -158,10 +173,16 @@ export default function AdminEventDetails() {
                         mapParticipant(p)
                     ]));
 
-                    const teamsWithMembers = teamsList.map(t => ({
-                        ...t,
-                        members: t.memberIds.map(mid => membersMap.get(mid)).filter(Boolean) as Participant[]
-                    }));
+                    const teamsWithMembers = teamsList.map(t => {
+                        const members = t.memberIds.map(mid => membersMap.get(mid)).filter(Boolean) as Participant[];
+                        // Sort team members numerically by chest number
+                        members.sort((a, b) => {
+                            const aNum = parseInt(a.chestNumber) || 0;
+                            const bNum = parseInt(b.chestNumber) || 0;
+                            return aNum - bNum;
+                        });
+                        return { ...t, members };
+                    });
                     setTeams(teamsWithMembers);
                 } else {
                     setTeams(teamsList.map(t => ({ ...t, members: [] })));
@@ -188,6 +209,13 @@ export default function AdminEventDetails() {
                     totalPoints: p.total_points,
                     individualWins: p.individual_wins
                 })) as Participant[];
+
+                // Sort numerically by chest number
+                mappedParticipants.sort((a, b) => {
+                    const aNum = parseInt(a.chestNumber) || 0;
+                    const bNum = parseInt(b.chestNumber) || 0;
+                    return aNum - bNum;
+                });
 
                 setParticipants(mappedParticipants);
             }
@@ -671,6 +699,10 @@ export default function AdminEventDetails() {
         setRoundSaving(false);
     };
 
+    const handlePrint = () => {
+        window.print();
+    };
+
     // ────────────────────────────────────────────────────────────
 
     if (loading) {
@@ -787,6 +819,10 @@ export default function AdminEventDetails() {
                                 </DialogContent>
                             </Dialog>
 
+                            <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2">
+                                <Printer className="h-4 w-4" /> Print List
+                            </Button>
+
                             {/* Add Participant Button */}
                             <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
                                 <DialogTrigger asChild>
@@ -820,7 +856,7 @@ export default function AdminEventDetails() {
                                                     </SelectContent>
                                                 </Select>
                                             )}
-                                            <Select value={String(newParticipant.semester)} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, semester: parseInt(v) })}>
+                                            <Select value={newParticipant.semester} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, semester: v })}>
                                                 <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="1">S1/S2</SelectItem>
@@ -944,86 +980,185 @@ export default function AdminEventDetails() {
             </header>
 
             {/* Main Content */}
-            <main className="max-w-6xl mx-auto px-4 py-6">
-                <h2 className="text-lg font-semibold mb-4">
-                    {event.type === "group" ? "Teams" : "Participants"} ({event.type === "group" ? teams.length : participants.length})
-                </h2>
+            <main className="max-w-6xl mx-auto px-4 py-6 print:p-0 print:max-w-none">
+                {/* Print Only Header */}
+                <div className="hidden print:block text-center mb-8 border-b-2 border-black pb-4">
+                    <h1 className="text-3xl font-black uppercase tracking-widest">{event.name}</h1>
+                    <div className="flex justify-center gap-6 mt-2 text-sm font-bold">
+                        <span className="uppercase">{event.type} EVENT</span>
+                        <span className="uppercase">{event.gender}</span>
+                        {curRoundData && <span className="uppercase">{curRoundData.name}</span>}
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center mb-4 print:hidden">
+                    <h2 className="text-xl font-bold">
+                        {event.type === "group" ? "Teams" : "Participants"} ({event.type === "group" ? teams.length : participants.length})
+                    </h2>
+                </div>
 
                 {event.type === "group" ? (
-                    // Teams Grid
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {teams.length === 0 ? (
-                            <p className="text-muted-foreground col-span-full text-center py-12">No teams registered yet.</p>
-                        ) : (
-                            teams.map((team: Team & { members?: Participant[] }) => (
-                                <Card key={team.id} className="overflow-hidden">
-                                    <CardContent className="p-0">
-                                        <div className="bg-primary/5 px-4 py-3 flex justify-between items-center border-b">
-                                            <span className="font-semibold">{team.name}</span>
-                                            <div className="flex gap-1">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => handleRemove(team.id)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                        <div className="p-4 space-y-2">
-                                            {team.members?.map((member) => (
-                                                <div key={member.id} className="flex items-center gap-3 text-sm">
-                                                    <span className="font-mono text-primary font-bold">#{member.chestNumber}</span>
-                                                    <div className="flex-1">
-                                                        <p className="font-medium">{member.name}</p>
-                                                        <p className="text-xs text-muted-foreground">{getSemesterGroup(member.semester)}</p>
-                                                    </div>
+                    // Teams Table
+                    <div className="rounded-md border bg-white shadow-sm print:border-0 print:shadow-none overflow-hidden">
+                        <Table className="print:border print:border-slate-300">
+                            <TableHeader className="print:bg-slate-100">
+                                <TableRow className="print:border-b-2 print:border-slate-400">
+                                    <TableHead className="w-[150px] print:text-black print:font-bold">Team / Dept</TableHead>
+                                    <TableHead className="print:text-black print:font-bold">Members (Chest - Name - Reg No)</TableHead>
+                                    <TableHead className="w-[100px] print:text-black print:font-bold hidden print:table-cell">Remark</TableHead>
+                                    <TableHead className="w-[100px] print:text-black print:font-bold hidden print:table-cell">Position</TableHead>
+                                    <TableHead className="w-[80px] print:hidden">Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {teams.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                                            No teams registered yet.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    teams.map((team: Team & { members?: Participant[] }) => (
+                                        <TableRow key={team.id} className="align-top print:border-b print:border-slate-300">
+                                            <TableCell className="font-semibold print:text-black">
+                                                {team.name}
+                                                <div className="hidden print:block text-[10px] font-normal opacity-70">
+                                                    {getDeptCode(team.departmentId)}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))
-                        )}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="space-y-2">
+                                                    {team.members?.map((member) => (
+                                                        <div key={member.id} className="flex items-center gap-3 text-sm print:text-black">
+                                                            <span className="font-mono text-primary font-bold w-12 print:text-black">#{member.chestNumber}</span>
+                                                            <div className="flex-1">
+                                                                <span className="font-medium mr-2">{member.name}</span>
+                                                                <span className="text-xs text-muted-foreground print:text-slate-500">
+                                                                    ({member.registerNumber})
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="hidden print:table-cell">
+                                                <div className="w-full h-10 border border-slate-300 rounded"></div>
+                                            </TableCell>
+                                            <TableCell className="hidden print:table-cell">
+                                                <div className="w-full h-10 border border-slate-300 rounded"></div>
+                                            </TableCell>
+                                            <TableCell className="print:hidden">
+                                                <div className="flex gap-1">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => handleRemove(team.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
                     </div>
                 ) : (
-                    // Participants Grid
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {participants.length === 0 ? (
-                            <p className="text-muted-foreground col-span-full text-center py-12">No participants registered yet.</p>
-                        ) : (
-                            participants.map(p => (
-                                <Card key={p.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                                    <CardContent className="p-4">
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex items-start gap-3">
-                                                <div className="bg-primary text-primary-foreground font-mono font-bold text-lg px-3 py-1 rounded">
+                    // Participants Table
+                    <div className="rounded-md border bg-white shadow-sm print:border-0 print:shadow-none overflow-hidden">
+                        <Table className="print:border print:border-slate-300">
+                            <TableHeader className="print:bg-slate-100">
+                                <TableRow className="print:border-b-2 print:border-slate-400">
+                                    <TableHead className="w-[80px] print:text-black print:font-bold">Chest</TableHead>
+                                    <TableHead className="print:text-black print:font-bold">Name</TableHead>
+                                    <TableHead className="print:text-black print:font-bold">Register No</TableHead>
+                                    <TableHead className="w-[100px] print:text-black print:font-bold">Dept</TableHead>
+                                    <TableHead className="w-[120px] print:text-black print:font-bold hidden print:table-cell">Remark</TableHead>
+                                    <TableHead className="w-[100px] print:text-black print:font-bold hidden print:table-cell">Position</TableHead>
+                                    <TableHead className="w-[80px] print:hidden">Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {participants.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                                            No participants registered yet.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    participants.map(p => (
+                                        <TableRow key={p.id} className="print:border-b print:border-slate-300">
+                                            <TableCell>
+                                                <div className="bg-primary/10 text-primary font-mono font-bold text-center py-1 rounded print:bg-transparent print:p-0 print:text-black print:text-left">
                                                     {p.chestNumber}
                                                 </div>
-                                                <div>
-                                                    <p className="font-semibold text-lg">{p.name}</p>
-                                                    <p className="text-sm text-muted-foreground">{getDeptName(p.departmentId)}</p>
-                                                    <div className="flex gap-2 mt-1">
-                                                        <Badge variant="outline" className="text-xs">{getBatchName(p.batchId)}</Badge>
-                                                        <Badge variant="secondary" className="text-xs">{getSemesterGroup(p.semester)}</Badge>
-                                                    </div>
+                                            </TableCell>
+                                            <TableCell className="font-semibold print:text-black">{p.name}</TableCell>
+                                            <TableCell className="font-mono text-sm print:text-black">{p.registerNumber}</TableCell>
+                                            <TableCell className="print:text-black">
+                                                <span className="font-bold">{getDeptCode(p.departmentId)}</span>
+                                            </TableCell>
+                                            <TableCell className="hidden print:table-cell">
+                                                <div className="w-full h-8 border border-slate-300 rounded"></div>
+                                            </TableCell>
+                                            <TableCell className="hidden print:table-cell">
+                                                <div className="w-full h-8 border border-slate-300 rounded"></div>
+                                            </TableCell>
+                                            <TableCell className="print:hidden">
+                                                <div className="flex gap-1">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingParticipant(p); setIsEditModalOpen(true); }}>
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => handleRemove(p.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
                                                 </div>
-                                            </div>
-                                            <div className="flex gap-1">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingParticipant(p); setIsEditModalOpen(true); }}>
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => handleRemove(p.id)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))
-                        )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
                     </div>
                 )}
+
+                <div className="hidden print:flex justify-between mt-12 px-8">
+                    <div className="text-center">
+                        <div className="w-32 border-b border-black mb-1"></div>
+                        <p className="text-xs font-bold uppercase">General Captain</p>
+                    </div>
+                    <div className="text-center">
+                        <div className="w-32 border-b border-black mb-1"></div>
+                        <p className="text-xs font-bold uppercase">Sports Coordinator</p>
+                    </div>
+                    <div className="text-center">
+                        <div className="w-32 border-b border-black mb-1"></div>
+                        <p className="text-xs font-bold uppercase">Principal</p>
+                    </div>
+                </div>
             </main>
+
+            {/* Print Styles */}
+            <style dangerouslySetInnerHTML={{
+                __html: `
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    main, main * {
+                        visibility: visible;
+                    }
+                    main {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                    }
+                    .print\\:hidden {
+                        display: none !important;
+                    }
+                }
+            `}} />
 
             {/* Edit Participant Modal */}
             <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
@@ -1036,26 +1171,26 @@ export default function AdminEventDetails() {
                             <Input
                                 placeholder="Name"
                                 value={editingParticipant.name}
-                                onChange={e => setEditingParticipant({ ...editingParticipant, name: e.target.value })}
+                                onChange={e => setEditingParticipant(prev => prev ? { ...prev, name: e.target.value } : null)}
                             />
                             <Input
                                 placeholder="Register Number"
                                 value={editingParticipant.registerNumber}
-                                onChange={e => setEditingParticipant({ ...editingParticipant, registerNumber: e.target.value })}
+                                onChange={e => setEditingParticipant(prev => prev ? { ...prev, registerNumber: e.target.value } : null)}
                             />
-                            <Select value={editingParticipant.departmentId} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, departmentId: v })}>
+                            <Select value={editingParticipant.departmentId} onValueChange={(v: string) => setEditingParticipant(prev => prev ? { ...prev, departmentId: v } : null)}>
                                 <SelectTrigger><SelectValue placeholder="Department" /></SelectTrigger>
                                 <SelectContent>
                                     {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
-                            <Select value={editingParticipant.batchId} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, batchId: v })}>
+                            <Select value={editingParticipant.batchId} onValueChange={(v: string) => setEditingParticipant(prev => prev ? { ...prev, batchId: v } : null)}>
                                 <SelectTrigger><SelectValue placeholder="Batch" /></SelectTrigger>
                                 <SelectContent>
-                                    {batches.filter(b => b.departmentId === editingParticipant.departmentId).map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                                    {batches.filter(b => b.departmentId === editingParticipant!.departmentId).map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
-                            <Select value={String(editingParticipant.semester)} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, semester: parseInt(v) })}>
+                            <Select value={editingParticipant.semester} onValueChange={(v: string) => setEditingParticipant(prev => prev ? { ...prev, semester: v } : null)}>
                                 <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="1">S1/S2</SelectItem>

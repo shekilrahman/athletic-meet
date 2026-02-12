@@ -4,6 +4,8 @@ import { ProtectedRoute } from './components/protected-route';
 
 import Login from './pages/login';
 import PublicDashboard from './pages/public-dashboard';
+import CertificatePreview from './pages/certificate-preview';
+import VerificationPage from './pages/verification-page';
 import StaffLayout from './layouts/staff-layout';
 import StaffEventList from './pages/staff/event-list';
 import EventDetails from './pages/staff/event-details';
@@ -18,6 +20,7 @@ import AdminDashboard from './pages/admin/dashboard';
 import ManageResources from './pages/admin/resources';
 import AdminEvents from './pages/admin/events';
 import AdminEventDetails from './pages/admin/event-details';
+import AdminRequests from './pages/admin/requests';
 
 
 function App() {
@@ -25,9 +28,12 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
+
           {/* Public Routes */}
           <Route path="/" element={<PublicDashboard />} />
+          <Route path="/certificate-preview" element={<CertificatePreview />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/verify/:registerNumber" element={<VerificationPage />} />
 
           {/* Ontrack Staff Routes (Mobile) */}
           <Route path="/ontrack" element={<ProtectedRoute allowedRoles={['staff']} />}>
@@ -55,6 +61,7 @@ function App() {
               <Route index element={<AdminDashboard />} />
               <Route path="resources" element={<ManageResources />} />
               <Route path="events" element={<AdminEvents />} />
+              <Route path="requests" element={<AdminRequests />} />
               <Route path="certificates" element={<div className="p-4">Certificates</div>} />
             </Route>
             <Route path="events/:eventId" element={<AdminEventDetails />} />

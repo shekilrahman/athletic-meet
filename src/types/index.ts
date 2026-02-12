@@ -76,7 +76,7 @@ export interface Participant {
     name: string;
     departmentId: string;
     batchId: string;
-    semester: number;
+    semester: string;
     gender: 'male' | 'female';
     chestNumber: string;
     totalPoints: number;
@@ -87,4 +87,15 @@ export interface Participant {
 export interface EventRegistration {
     participantId: string;
     eventId: string;
+}
+
+export interface ParticipationRequest {
+    id: string;
+    participantId: string;
+    eventId: string;
+    status: 'pending' | 'approved' | 'rejected';
+    created_at?: string;
+    // Join fields (optional)
+    participant?: Participant;
+    event?: Event;
 }

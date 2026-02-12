@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Calendar, Award, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, Award, LogOut, UserPlus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 import { supabase } from "../lib/supabase";
@@ -21,6 +21,7 @@ export default function AdminLayout() {
         { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
         { name: "Manage Resources", path: "/admin/resources", icon: Users },
         { name: "Events", path: "/admin/events", icon: Calendar },
+        { name: "Requests", path: "/admin/requests", icon: UserPlus },
         { name: "Certificates", path: "/admin/certificates", icon: Award },
     ];
 
