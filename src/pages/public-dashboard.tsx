@@ -978,7 +978,7 @@ export default function PublicDashboard() {
                                                 <div className="flex justify-center my-4">
                                                     <Button variant="outline" onClick={() => setRequestDialogOpen(true)}>
                                                         <UserPlus className="h-4 w-4 mr-2" />
-                                                        Request to Join Other Events
+                                                        Request for event participation missing in list
                                                     </Button>
                                                 </div>
                                             )}

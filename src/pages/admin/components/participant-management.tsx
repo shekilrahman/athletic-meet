@@ -29,10 +29,11 @@ import { Plus, Edit, Trash2, Loader2 } from "lucide-react";
 import type { Participant, Department, Batch } from "../../../types";
 
 // Helper function to display semester as group
-const getSemesterGroup = (sem: number): string => {
-    if (sem <= 2) return "S1/S2";
-    if (sem <= 4) return "S3/S4";
-    if (sem <= 6) return "S5/S6";
+const getSemesterGroup = (sem: string): string => {
+    const s = parseInt(sem);
+    if (s <= 2) return "S1/S2";
+    if (s <= 4) return "S3/S4";
+    if (s <= 6) return "S5/S6";
     return "S7/S8";
 };
 
@@ -50,7 +51,7 @@ export function ParticipantManagement() {
         departmentId: "",
         batchId: "",
         gender: "male" as "male" | "female",
-        semester: 1,
+        semester: "1",
         chestNumber: "",
     });
     const [adding, setAdding] = useState(false);
@@ -137,7 +138,7 @@ export function ParticipantManagement() {
                 departmentId: "",
                 batchId: "",
                 gender: "male",
-                semester: 1,
+                semester: "1",
                 chestNumber: "",
             });
             fetchData();
@@ -295,7 +296,7 @@ export function ParticipantManagement() {
                                         <SelectItem value="female">Female</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <Select value={String(newParticipant.semester)} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, semester: parseInt(v) })}>
+                                <Select value={newParticipant.semester} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, semester: v })}>
                                     <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="1">S1/S2</SelectItem>
@@ -390,7 +391,7 @@ export function ParticipantManagement() {
                                     <SelectItem value="female">Female</SelectItem>
                                 </SelectContent>
                             </Select>
-                            <Select value={String(editingParticipant.semester)} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, semester: parseInt(v) })}>
+                            <Select value={editingParticipant.semester} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, semester: v })}>
                                 <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="1">S1/S2</SelectItem>

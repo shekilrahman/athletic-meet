@@ -13,10 +13,11 @@ import { ArrowLeft, Trash2, Loader2, Search, AlertCircle, Plus, Users, Edit, Che
 import type { Event, Participant, Department, Batch, Team, Round } from "../../types";
 
 // Helper function to display semester as group
-const getSemesterGroup = (sem: number): string => {
-    if (sem <= 2) return "S1/S2";
-    if (sem <= 4) return "S3/S4";
-    if (sem <= 6) return "S5/S6";
+const getSemesterGroup = (sem: string): string => {
+    const s = parseInt(sem);
+    if (s <= 2) return "S1/S2";
+    if (s <= 4) return "S3/S4";
+    if (s <= 6) return "S5/S6";
     return "S7/S8";
 };
 
@@ -58,7 +59,7 @@ export default function OfftrackEventDetails() {
         departmentId: "",
         batchId: "",
         gender: "male" as "male" | "female",
-        semester: 1,
+        semester: "1",
     });
 
     // Edit participant state
@@ -687,7 +688,7 @@ export default function OfftrackEventDetails() {
                                                     </SelectContent>
                                                 </Select>
                                             )}
-                                            <Select value={String(newParticipant.semester)} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, semester: parseInt(v) })}>
+                                            <Select value={newParticipant.semester} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, semester: v })}>
                                                 <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="1">S1/S2</SelectItem>

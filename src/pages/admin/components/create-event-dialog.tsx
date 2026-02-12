@@ -20,7 +20,6 @@ import {
 } from "../../../components/ui/select";
 import { Plus } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
-import type { Event } from "../../../types";
 
 export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => void }) {
     const [open, setOpen] = useState(false);
@@ -40,17 +39,17 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
         setLoading(true);
 
         try {
-            const newEvent: Omit<Event, "id"> = {
+            const newEvent: any = {
                 name: formData.name,
-                type: formData.type as "individual" | "group",
-                gender: formData.gender as "male" | "female" | "mixed",
+                type: formData.type,
+                gender: formData.gender,
                 status: "upcoming",
-                currentRoundIndex: 0,
+                current_round_index: 0,
                 participants: [],
-                ...(formData.type === "group" && { teamSize: formData.teamSize }),
-                points1st: formData.points1st,
-                points2nd: formData.points2nd,
-                points3rd: formData.points3rd,
+                ...(formData.type === "group" && { team_size: formData.teamSize }),
+                points_1st: formData.points1st,
+                points_2nd: formData.points2nd,
+                points_3rd: formData.points3rd,
                 rounds: [
                     { id: "r1", name: "Round 1", sequence: 1, status: "pending", participants: [] },
                 ],

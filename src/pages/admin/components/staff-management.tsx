@@ -153,6 +153,18 @@ export function StaffManagement() {
     const handleEditStaff = async () => {
         if (!editingStaff) return;
         try {
+            // 1. If password is provided, use the secure RPC to update Auth and Staff tables
+            if (formData.password) {
+                const { error: rpcError } = await supabase.rpc('update_user_password', {
+                    target_user_id: editingStaff.uid,
+                    new_password: formData.password
+                });
+
+                if (rpcError) throw rpcError;
+            }
+
+            // 2. Update other details (name, email, phone, role) directly in staff table
+            // Note: We don't update 'password' here because the RPC handled it (or we are not changing it)
             const { error } = await supabase
                 .from('staff')
                 .update({
@@ -160,7 +172,6 @@ export function StaffManagement() {
                     email: formData.email,
                     phone: formData.phone,
                     staff_type: formData.staffType,
-                    password: formData.password || undefined // Only update if provided
                 })
                 .eq('uid', editingStaff.uid);
 
@@ -169,8 +180,10 @@ export function StaffManagement() {
             setIsEditOpen(false);
             setEditingStaff(null);
             fetchStaff();
-        } catch (error) {
+            alert(formData.password ? "Staff details and password updated!" : "Staff details updated!");
+        } catch (error: any) {
             console.error("Error updating staff:", error);
+            alert("Failed to update staff: " + error.message);
         }
     };
 

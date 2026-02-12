@@ -99,3 +99,17 @@ export interface ParticipationRequest {
     participant?: Participant;
     event?: Event;
 }
+
+export interface SystemSettings {
+    id: string; // 'config'
+    college_name: string;
+    hod_name: string;
+    principal_name: string;
+    college_logo_url?: string;
+    company_logo_url?: string;
+    watermark_url?: string;
+    principal_signature_url?: string;
+    hod_signature_url?: string;
+}
+
+export interface SystemSettingsUpdate extends Partial<SystemSettings> { }

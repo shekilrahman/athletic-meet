@@ -1,12 +1,15 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, Calendar, Users, Trophy, LogOut } from "lucide-react";
+import { useState } from "react";
+import { LayoutDashboard, Calendar, Users, Trophy, LogOut, Key } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 import { supabase } from "../lib/supabase";
+import { ChangePasswordDialog } from "../components/change-password-dialog";
 
 export default function OfftrackLayout() {
     const navigate = useNavigate();
     const location = useLocation();
+    const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
 
     const handleLogout = async () => {
         try {
@@ -26,6 +29,7 @@ export default function OfftrackLayout() {
 
     return (
         <div className="flex min-h-screen bg-gray-100">
+            <ChangePasswordDialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen} />
             {/* Sidebar */}
             <aside className="w-64 bg-white border-r shadow-sm hidden md:flex flex-col">
                 <div className="p-6">
@@ -49,7 +53,11 @@ export default function OfftrackLayout() {
                     ))}
                 </nav>
 
-                <div className="p-4 border-t">
+                <div className="p-4 border-t space-y-2">
+                    <Button variant="ghost" className="w-full justify-start gap-2" onClick={() => setIsPasswordDialogOpen(true)}>
+                        <Key className="h-4 w-4" />
+                        Change Password
+                    </Button>
                     <Button variant="ghost" className="w-full justify-start gap-2 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={handleLogout}>
                         <LogOut className="h-4 w-4" />
                         Logout

@@ -5,9 +5,10 @@ import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { Loader2, Users, User, ChevronRight, Trophy, Clock, PlayCircle, LogOut } from "lucide-react";
+import { Loader2, Users, User, ChevronRight, Trophy, Clock, PlayCircle, LogOut, Key } from "lucide-react";
 import { useAuth } from "../../components/auth-provider";
 import type { Event } from "../../types";
+import { ChangePasswordDialog } from "../../components/change-password-dialog";
 
 const statusConfig = {
     upcoming: { color: "bg-amber-100 text-amber-800", icon: Clock, label: "Upcoming" },
@@ -20,6 +21,7 @@ export default function StaffEventList() {
     const { logout } = useAuth();
     const [events, setEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
 
     useEffect(() => {
         const fetchEvents = async () => {
@@ -127,13 +129,20 @@ export default function StaffEventList() {
                         Select an event to manage rounds and results.
                     </p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={async () => {
-                    navigate('/');
-                    await logout();
-                }}>
-                    <LogOut className="h-5 w-5" />
-                </Button>
+                <div className="flex gap-2">
+                    <Button variant="ghost" size="icon" onClick={() => setIsPasswordDialogOpen(true)}>
+                        <Key className="h-5 w-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={async () => {
+                        navigate('/');
+                        await logout();
+                    }}>
+                        <LogOut className="h-5 w-5" />
+                    </Button>
+                </div>
             </header>
+
+            <ChangePasswordDialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen} />
 
             <Tabs defaultValue="upcoming" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">

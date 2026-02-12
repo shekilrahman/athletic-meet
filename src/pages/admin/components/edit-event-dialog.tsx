@@ -63,17 +63,17 @@ export function EditEventDialog({ event, open, onOpenChange, onEventUpdated }: E
         setLoading(true);
 
         try {
-            const updatedData: Partial<Event> = {
+            const updatedData: any = {
                 name: formData.name,
-                type: formData.type as "individual" | "group",
-                gender: formData.gender as "male" | "female" | "mixed",
-                points1st: formData.points1st,
-                points2nd: formData.points2nd,
-                points3rd: formData.points3rd,
+                type: formData.type,
+                gender: formData.gender,
+                points_1st: formData.points1st,
+                points_2nd: formData.points2nd,
+                points_3rd: formData.points3rd,
             };
 
             if (formData.type === "group") {
-                updatedData.teamSize = formData.teamSize;
+                updatedData.team_size = formData.teamSize;
             }
 
             const { error } = await supabase

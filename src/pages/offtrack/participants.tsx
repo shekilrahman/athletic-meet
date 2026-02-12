@@ -50,7 +50,7 @@ export default function OfftrackParticipants() {
         chestNumber: "",
         departmentId: "",
         batchId: "",
-        semester: 1,
+        semester: "1",
         gender: "male" as "male" | "female",
     });
 
@@ -101,7 +101,7 @@ export default function OfftrackParticipants() {
             });
 
             setIsAddOpen(false);
-            setNewParticipant({ name: "", registerNumber: "", chestNumber: "", departmentId: "", batchId: "", semester: 1, gender: "male" });
+            setNewParticipant({ name: "", registerNumber: "", chestNumber: "", departmentId: "", batchId: "", semester: "1", gender: "male" });
             fetchData();
         } catch (error: any) {
             console.error("Error creating participant:", error);
@@ -158,10 +158,11 @@ export default function OfftrackParticipants() {
     };
 
     const getDeptName = (id: string) => departments.find(d => d.id === id)?.name || id;
-    const getSemesterGroup = (sem: number): string => {
-        if (sem <= 2) return "S1/S2";
-        if (sem <= 4) return "S3/S4";
-        if (sem <= 6) return "S5/S6";
+    const getSemesterGroup = (sem: string): string => {
+        const s = parseInt(sem);
+        if (s <= 2) return "S1/S2";
+        if (s <= 4) return "S3/S4";
+        if (s <= 6) return "S5/S6";
         return "S7/S8";
     };
 
@@ -261,7 +262,7 @@ export default function OfftrackParticipants() {
                                     {batches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
-                            <Select value={String(newParticipant.semester)} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, semester: Number(v) })}>
+                            <Select value={newParticipant.semester} onValueChange={(v: string) => setNewParticipant({ ...newParticipant, semester: v })}>
                                 <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="1">S1/S2</SelectItem>
@@ -332,7 +333,7 @@ export default function OfftrackParticipants() {
                                     {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
-                            <Select value={String(editingParticipant.semester)} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, semester: Number(v) })}>
+                            <Select value={editingParticipant.semester} onValueChange={(v: string) => setEditingParticipant({ ...editingParticipant, semester: v })}>
                                 <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="1">S1/S2</SelectItem>

@@ -91,7 +91,7 @@ export async function registerParticipant(data: RegistrationData): Promise<Parti
                 name: participantData.name,
                 departmentId: participantData.department_id,
                 batchId: participantData.batch_id,
-                semester: String(participantData.semester),
+                semester: participantData.semester,
                 gender: participantData.gender,
                 chestNumber: participantData.chest_number,
                 totalPoints: participantData.total_points,

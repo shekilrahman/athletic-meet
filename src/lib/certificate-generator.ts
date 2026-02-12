@@ -1,9 +1,12 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
-import collegeLogo from '../assets/college.png';
-import companyLogo from '../assets/logo company.png';
-import watermarkLogo from '../assets/watermark.png';
-import principalSignature from '../assets/princiaple.png';
+import { supabase } from './supabase';
+import type { SystemSettings } from '../types';
+
+// Default assets (make sure these exist or provide fallback URLs if possible, otherwise rely on DB)
+import collegeLogoDefault from '../assets/college.png';
+import principalSignatureDefault from '../assets/princiaple.png';
+import hodSignatureDefault from '../assets/HOD.png';
 
 export type CertificateType = '1st' | '2nd' | '3rd' | 'participation';
 
@@ -20,11 +23,15 @@ interface CertificateOptions {
 
 // Helper to load image as base64 or HTMLImageElement for jsPDF
 const loadImage = (src: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => resolve(img);
-        img.onerror = reject;
+        img.onerror = () => {
+            console.warn(`Failed to load image: ${src}`);
+            // Resolve with empty image to prevent crash
+            resolve(new Image());
+        };
         img.src = src;
     });
 };
@@ -186,11 +193,45 @@ const generateQrCodeDataUrl = async (text: string): Promise<string> => {
     }
 };
 
+// Fetch settings helper
+const fetchSystemSettings = async (): Promise<SystemSettings | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('settings')
+            .select('*')
+            .eq('id', 'config')
+            .single();
 
+        if (error) {
+            console.warn("Failed to fetch settings, using defaults", error);
+            return null;
+        }
+        return data as SystemSettings;
+    } catch (e) {
+        console.warn("Exception fetching settings", e);
+        return null;
+    }
+}
 
 /* --- MAIN FUNCTION --- */
 export async function generateCertificate(options: CertificateOptions): Promise<string | void> {
     const { type, participantName, eventName, departmentName, registerNumber, semester, gender, returnDataUrl } = options;
+
+    // Fetch settings
+    const settings = await fetchSystemSettings();
+
+    // Fallback values
+    const collegeName = settings?.college_name || "GOVERNMENT ENGINEERING COLLEGE WAYANAD";
+    const hodName = settings?.hod_name || "Dr. Joly Thomas";
+    const principalName = settings?.principal_name || "Dr. Pradeep V";
+
+    // Image URLs (Prioritize settings, fallback to imports)
+    const collegeLogoUrl = settings?.college_logo_url || collegeLogoDefault;
+    const companyLogoUrl = settings?.company_logo_url || "";
+    const watermarkUrl = settings?.watermark_url || "";
+    const principalSigUrl = settings?.principal_signature_url || principalSignatureDefault;
+    const hodSigUrl = settings?.hod_signature_url || hodSignatureDefault; // Fallback to principal sig if HOD missing for now? Or blank?
+
     const themeColor = getThemeColor(type);
 
     const doc = new jsPDF({
@@ -204,11 +245,12 @@ export async function generateCertificate(options: CertificateOptions): Promise<
     const pageHeight = doc.internal.pageSize.getHeight();
     const centerX = pageWidth / 2;
 
-    const [collegeImg, companyImg, watermarkImg, principalSigImg] = await Promise.all([
-        loadImage(collegeLogo),
-        loadImage(companyLogo),
-        loadImage(watermarkLogo),
-        loadImage(principalSignature)
+    const [collegeImg, companyImg, watermarkImg, principalSigImg, hodSigImg] = await Promise.all([
+        loadImage(collegeLogoUrl),
+        loadImage(companyLogoUrl),
+        loadImage(watermarkUrl),
+        loadImage(principalSigUrl),
+        loadImage(hodSigUrl)
     ]);
 
     // Border
@@ -238,17 +280,19 @@ export async function generateCertificate(options: CertificateOptions): Promise<
     // WATERMARK (Background) - Center of Page
     const watermarkSize = 120;
     // @ts-ignore
-    doc.setGState(new doc.GState({ opacity: 0.2 })); // 10% opacity
-    doc.addImage(
-        watermarkImg,
-        'PNG',
-        centerX - (watermarkSize / 2),
-        (pageHeight / 2) - (watermarkSize / 2),
-        watermarkSize,
-        watermarkSize * (watermarkImg.height / watermarkImg.width),
-        undefined,
-        'FAST'
-    );
+    doc.setGState(new doc.GState({ opacity: 0.2 })); // 20% opacity
+    if (watermarkImg.width > 0) {
+        doc.addImage(
+            watermarkImg,
+            'PNG',
+            centerX - (watermarkSize / 2),
+            (pageHeight / 2) - (watermarkSize / 2),
+            watermarkSize,
+            watermarkSize * (watermarkImg.height / watermarkImg.width),
+            undefined,
+            'FAST'
+        );
+    }
     // @ts-ignore
     doc.setGState(new doc.GState({ opacity: 1.0 }));
 
@@ -256,7 +300,9 @@ export async function generateCertificate(options: CertificateOptions): Promise<
     const logoY = 20;
     const logoSize = 25;
 
-    doc.addImage(collegeImg, 'PNG', 20, logoY, logoSize, logoSize * (collegeImg.height / collegeImg.width), undefined, 'FAST');
+    if (collegeImg.width > 0) {
+        doc.addImage(collegeImg, 'PNG', 20, logoY, logoSize, logoSize * (collegeImg.height / collegeImg.width), undefined, 'FAST');
+    }
 
     // QR Code (Top Right)
     const qrSize = 25;
@@ -290,7 +336,7 @@ export async function generateCertificate(options: CertificateOptions): Promise<
     doc.setFontSize(18);
     doc.setTextColor(COLORS.BLACK);
     const maxTitleWidth = pageWidth - 100;
-    const titleLines = doc.splitTextToSize("GOVERNMENT ENGINEERING COLLEGE WAYANAD", maxTitleWidth);
+    const titleLines = doc.splitTextToSize(collegeName.toUpperCase(), maxTitleWidth);
     doc.text(titleLines, centerX, currentY, { align: 'center' });
     currentY += 8 * titleLines.length;
 
@@ -383,15 +429,17 @@ export async function generateCertificate(options: CertificateOptions): Promise<
     doc.setDrawColor(COLORS.DARK_GRAY);
     // doc.line(col1X - 25, commonBaseY, col1X + 25, commonBaseY); // Signature Line Removed
 
-    // HOD Signature (Using same placeholder as Principal)
+    // HOD Signature
     const hodSigWidth = 40;
-    const hodSigHeight = hodSigWidth * (principalSigImg.height / principalSigImg.width);
-    doc.addImage(principalSigImg, 'PNG', col1X - (hodSigWidth / 2), commonBaseY - hodSigHeight - 4, hodSigWidth, hodSigHeight, undefined, 'FAST');
+    const hodSigHeight = hodSigWidth * (hodSigImg.height / hodSigImg.width);
+    if (hodSigImg.width > 0) {
+        doc.addImage(hodSigImg, 'PNG', col1X - (hodSigWidth / 2), commonBaseY - hodSigHeight - 4, hodSigWidth, hodSigHeight, undefined, 'FAST');
+    }
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(COLORS.DARK_GRAY);
-    doc.text("Dr. Joly Thomas", col1X, commonBaseY + 5, { align: 'center' });
+    doc.text(hodName, col1X, commonBaseY + 5, { align: 'center' });
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
@@ -409,7 +457,9 @@ export async function generateCertificate(options: CertificateOptions): Promise<
     const largeCompanyLogoHeight = largeCompanyLogoWidth * (companyImg.height / companyImg.width);
 
     // Draw centered on col2X, aligned with footerY + 5
-    doc.addImage(companyImg, 'PNG', col2X - (largeCompanyLogoWidth / 2), footerY + 5, largeCompanyLogoWidth, largeCompanyLogoHeight, undefined, 'FAST');
+    if (companyImg.width > 0) {
+        doc.addImage(companyImg, 'PNG', col2X - (largeCompanyLogoWidth / 2), footerY + 5, largeCompanyLogoWidth, largeCompanyLogoHeight, undefined, 'FAST');
+    }
 
 
     // 3. Principal (Right)
@@ -419,12 +469,14 @@ export async function generateCertificate(options: CertificateOptions): Promise<
     // Principal Signature
     const sigWidth = 40;
     const sigHeight = sigWidth * (principalSigImg.height / principalSigImg.width);
-    doc.addImage(principalSigImg, 'PNG', col3X - (sigWidth / 2), commonBaseY - sigHeight - 4, sigWidth, sigHeight, undefined, 'FAST');
+    if (principalSigImg.width > 0) {
+        doc.addImage(principalSigImg, 'PNG', col3X - (sigWidth / 2), commonBaseY - sigHeight - 4, sigWidth, sigHeight, undefined, 'FAST');
+    }
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(COLORS.DARK_GRAY);
-    doc.text("Dr. Pradeep V", col3X, commonBaseY + 5, { align: 'center' });
+    doc.text(principalName, col3X, commonBaseY + 5, { align: 'center' });
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);

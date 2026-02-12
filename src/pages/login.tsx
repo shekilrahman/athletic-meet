@@ -21,15 +21,41 @@ export default function Login() {
         setLoading(true);
 
         try {
-            const { error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
 
             if (error) throw error;
 
-            // Redirect to the page they were trying to access, or home
-            navigate(from, { replace: true });
+            // Fetch user profile to determine role
+            const { data: profile } = await supabase
+                .from('staff')
+                .select('*')
+                .eq('uid', data.user.id)
+                .single();
+
+            if (from && from !== '/') {
+                navigate(from, { replace: true });
+                return;
+            }
+
+            if (profile) {
+                if (profile.role === 'admin') {
+                    navigate('/admin', { replace: true });
+                } else if (profile.role === 'staff') {
+                    if (profile.staffType === 'offtrack') {
+                        navigate('/offtrack', { replace: true });
+                    } else {
+                        navigate('/ontrack', { replace: true });
+                    }
+                } else {
+                    navigate('/', { replace: true });
+                }
+            } else {
+                // Fallback if no profile found (shouldn't happen for valid staff/admin)
+                navigate('/', { replace: true });
+            }
         } catch (err: any) {
             console.error(err);
             setError(err.message || 'Failed to login. Please check your credentials.');
