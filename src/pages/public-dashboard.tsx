@@ -415,15 +415,18 @@ export default function PublicDashboard() {
                     .select('*, events(*)')
                     .eq('participant_id', participant.id);
 
-                if (requestsError) throw requestsError;
+                if (requestsError) {
+                    console.error("Error fetching participation requests:", requestsError);
+                    throw requestsError;
+                }
 
                 const participantRequests = (requestsData || []).map((r: any) => ({
                     event: {
-                        id: r.events.id,
-                        name: r.events.name,
-                        type: r.events.type,
-                        gender: r.events.gender,
-                        status: r.events.status,
+                        id: r.events?.id,
+                        name: r.events?.name,
+                        type: r.events?.type,
+                        gender: r.events?.gender,
+                        status: r.events?.status,
                     } as Event,
                     status: r.status
                 }));
@@ -1043,15 +1046,14 @@ export default function PublicDashboard() {
 
                                             <Card>
                                                 <CardHeader>
-                                                    <CardTitle className="text-lg">Participation Requests ({lookupResult.requests.filter(r => r.status !== 'approved').length})</CardTitle>
+                                                    <CardTitle className="text-lg">Participation Requests ({lookupResult.requests.length})</CardTitle>
                                                 </CardHeader>
                                                 <CardContent>
-                                                    {lookupResult.requests.filter(r => r.status !== 'approved').length === 0 ? (
+                                                    {lookupResult.requests.length === 0 ? (
                                                         <p className="text-muted-foreground text-center py-4">No pending or previous requests</p>
                                                     ) : (
                                                         <div className="space-y-2">
                                                             {lookupResult.requests
-                                                                .filter(r => r.status !== 'approved')
                                                                 .map(({ event, status }) => (
                                                                     <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md gap-2">
                                                                         <div className="flex-1 min-w-0">
