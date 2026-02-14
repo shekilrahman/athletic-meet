@@ -41,7 +41,11 @@ export default function ManageResources() {
                 .select('*');
 
             if (batchesError) throw batchesError;
-            setBatches((batchesData || []) as Batch[]);
+            setBatches((batchesData || []).map((b: any) => ({
+                id: b.id,
+                name: b.name,
+                departmentId: b.department_id
+            })) as Batch[]);
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {
@@ -117,6 +121,22 @@ export default function ManageResources() {
         }
     };
 
+    const handleDeleteBatch = async (batchId: string) => {
+        if (!confirm("Are you sure you want to delete this batch?")) return;
+        try {
+            const { error } = await supabase
+                .from('batches')
+                .delete()
+                .eq('id', batchId);
+
+            if (error) throw error;
+            fetchData();
+        } catch (error: any) {
+            console.error("Error deleting batch:", error);
+            alert("Failed to delete batch. It might be in use by participants.");
+        }
+    };
+
     const getBatchesForDept = (deptId: string) => {
         return batches.filter(b => b.departmentId === deptId);
     };
@@ -170,7 +190,16 @@ export default function ManageResources() {
                                                     <div className="flex flex-wrap gap-2 items-center">
                                                         {deptBatches.length > 0 ? (
                                                             deptBatches.map(b => (
-                                                                <Badge key={b.id} variant="secondary">{b.name}</Badge>
+                                                                <Badge key={b.id} variant="secondary" className="flex items-center gap-1">
+                                                                    {b.name}
+                                                                    <button
+                                                                        onClick={() => handleDeleteBatch(b.id)}
+                                                                        className="ml-1 hover:bg-slate-200 rounded-full p-0.5 transition-colors"
+                                                                        title="Delete Batch"
+                                                                    >
+                                                                        <Trash2 className="h-3 w-3 text-red-500" />
+                                                                    </button>
+                                                                </Badge>
                                                             ))
                                                         ) : (
                                                             <span className="text-muted-foreground text-xs italic">Single Unit</span>

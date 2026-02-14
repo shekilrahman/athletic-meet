@@ -33,15 +33,31 @@ export default function Scoreboard() {
     const [participantStats, setParticipantStats] = useState<ParticipantStats[]>([]);
     const [departmentStats, setDepartmentStats] = useState<DepartmentStats[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeProgram, setActiveProgram] = useState<any>(null);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Fetch base data
+                // 1. Get Active Program
+                const { data: programData } = await supabase
+                    .from('programs')
+                    .select('id, name, category')
+                    .eq('status', 'active')
+                    .single();
+                if (programData) {
+                    setActiveProgram(programData);
+                }
+
+                if (!programData) {
+                    setLoading(false);
+                    return;
+                }
+
+                // 2. Fetch data for this program
                 const [deptRes, partRes, eventRes, teamsRes] = await Promise.all([
                     supabase.from('departments').select('*'),
                     supabase.from('participants').select('*'),
-                    supabase.from('events').select('*'),
+                    supabase.from('events').select('*').eq('program_id', programData.id),
                     supabase.from('teams').select('*')
                 ]);
 
@@ -230,11 +246,12 @@ export default function Scoreboard() {
             </TabsList>
 
             <TabsContent value="departments">
-                <Card>
+                {/* Department/Semester Standings */}
+                <Card className="md:col-span-2">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-xl flex items-center gap-2">
                             <Trophy className="h-5 w-5 text-yellow-500" />
-                            Live Standings
+                            {activeProgram?.category === 'semester' ? 'Semester' : 'Department'} Standings
                         </CardTitle>
                         <CardDescription>Real-time department rankings</CardDescription>
                     </CardHeader>

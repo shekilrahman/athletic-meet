@@ -404,7 +404,11 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Manage Participants - {event.name}</DialogTitle>
-                    <DialogDescription>{event.type === 'group' ? `Register Teams (${event.teamSize} members)` : "Register Participants"}</DialogDescription>
+                    <DialogDescription>
+                        {event.type === 'group'
+                            ? `Register Teams (${event.programs?.category || 'Department'} Mode, ${event.teamSize} members)`
+                            : "Register Participants"}
+                    </DialogDescription>
                 </DialogHeader>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -412,6 +416,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                     <div className="space-y-4 border-r pr-4">
                         <h3 className="font-semibold text-sm text-muted-foreground mr-2">
                             {isCreating ? "New Participant" : (event.type === 'group' ? "New Team" : "Add Participant")}
+                            <span className="ml-2 text-xs font-mono text-gray-400">[{event.programs?.category || 'undefined'}]</span>
                         </h3>
 
                         {isCreating ? (
@@ -443,18 +448,30 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                             // REGISTRATION MODE
                             event.type === 'group' ? (
                                 <div className="space-y-3">
-                                    <Select value={teamName} onValueChange={setTeamName}>
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select Department (Team Name)" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {departments.map((dep) => (
-                                                <SelectItem key={dep.id} value={dep.name}>
-                                                    {dep.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    {/* Team Name Selection Based on Program Category */}
+                                    {/* Team Name Selection Based on Program Category */}
+                                    {event.programs?.category === 'department' ? (
+                                        <Select value={teamName} onValueChange={setTeamName}>
+                                            <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                            <SelectContent>
+                                                {departments.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    ) : event.programs?.category === 'semester' ? (
+                                        <Select value={teamName} onValueChange={setTeamName}>
+                                            <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                                            <SelectContent>
+                                                {['S1/S2', 'S3/S4', 'S5/S6', 'S7/S8'].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    ) : (
+                                        <Input
+                                            placeholder="Enter Team Name"
+                                            value={teamName}
+                                            onChange={(e) => setTeamName(e.target.value)}
+                                        />
+                                    )}
+
                                     <div className="space-y-2">
                                         {Array.from({ length: event.teamSize || 1 }).map((_, i) => (
                                             <div key={i} className="flex gap-2 items-center">
@@ -605,7 +622,7 @@ export function EventParticipantsDialog({ event, onUpdate }: EventParticipantsDi
                         </Table>
                     </div>
                 </div>
-            </DialogContent>
-        </Dialog>
+            </DialogContent >
+        </Dialog >
     );
 }

@@ -69,11 +69,24 @@ export default function VerificationPage() {
                 );
                 const participantTeamIds = participantTeams.map(t => t.id);
 
-                // 4. Fetch Events
-                const { data: eventsData, error: evError } = await supabase.from('events').select('*');
+                // 4. Fetch Active Program and Events
+                const { data: programData } = await supabase
+                    .from('programs')
+                    .select('id')
+                    .eq('status', 'active')
+                    .single();
+
+                const activeProgramId = programData?.id;
+
+                let eventsQuery = supabase.from('events').select('*');
+                if (activeProgramId) {
+                    eventsQuery = eventsQuery.eq('program_id', activeProgramId);
+                }
+
+                const { data: eventsData, error: evError } = await eventsQuery;
                 if (evError) throw evError;
 
-                const eventsList = eventsData.map((e: any) => ({
+                const eventsList = (eventsData || []).map((e: any) => ({
                     id: e.id,
                     name: e.name,
                     type: e.type,

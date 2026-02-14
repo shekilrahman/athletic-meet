@@ -21,7 +21,12 @@ import {
 import { Plus } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 
-export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => void }) {
+interface CreateEventDialogProps {
+    onEventCreated: () => void;
+    programId: string | null;
+}
+
+export function CreateEventDialog({ onEventCreated, programId }: CreateEventDialogProps) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
@@ -36,11 +41,17 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!programId) {
+            alert("No program selected. Please select a program first.");
+            return;
+        }
+
         setLoading(true);
 
         try {
             const newEvent: any = {
                 name: formData.name,
+                program_id: programId,
                 type: formData.type,
                 gender: formData.gender,
                 status: "upcoming",
@@ -62,7 +73,15 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
             if (error) throw error;
 
             setOpen(false);
-            setFormData({ name: "", type: "individual", gender: "male", teamSize: 4, points1st: 5, points2nd: 3, points3rd: 1 });
+            setFormData({
+                name: "",
+                type: "individual",
+                gender: "male",
+                teamSize: 4,
+                points1st: 5,
+                points2nd: 3,
+                points3rd: 1
+            });
             onEventCreated();
         } catch (error) {
             console.error("Error creating event:", error);
@@ -74,7 +93,7 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button className="gap-2">
+                <Button className="gap-2" disabled={!programId}>
                     <Plus className="h-4 w-4" />
                     Create Event
                 </Button>
@@ -83,14 +102,14 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
                 <DialogHeader>
                     <DialogTitle>Create New Event</DialogTitle>
                     <DialogDescription>
-                        Add a new athletic event to the meet.
+                        Add a new athletic event to the selected program.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit}>
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="name" className="text-right">
-                                Name
+                                Event Name
                             </Label>
                             <Input
                                 id="name"
@@ -142,14 +161,14 @@ export function CreateEventDialog({ onEventCreated }: { onEventCreated: () => vo
                         )}
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="gender" className="text-right">
-                                Category
+                                Gender
                             </Label>
                             <Select
                                 value={formData.gender}
                                 onValueChange={(val) => setFormData({ ...formData, gender: val })}
                             >
                                 <SelectTrigger className="col-span-3">
-                                    <SelectValue placeholder="Select category" />
+                                    <SelectValue placeholder="Select gender" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="male">Men</SelectItem>

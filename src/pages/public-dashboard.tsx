@@ -54,11 +54,27 @@ export default function PublicDashboard() {
     const [submittingRequest, setSubmittingRequest] = useState(false);
     const [requestMessage, setRequestMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+    const [activeProgramName, setActiveProgramName] = useState("");
+
     useEffect(() => {
         const fetchData = async () => {
             try {
+                // 1. Get Active Program
+                const { data: programData } = await supabase
+                    .from('programs')
+                    .select('id, name')
+                    .eq('status', 'active')
+                    .single();
+
+                if (programData) {
+                    setActiveProgramName(programData.name);
+                }
+
+                // 2. Fetch data (filtered by program if applicable)
                 const [eventsRes, partsRes, deptsRes, teamsRes, batchesRes, settingsData] = await Promise.all([
-                    supabase.from('events').select('*'),
+                    programData
+                        ? supabase.from('events').select('*').eq('program_id', programData.id)
+                        : supabase.from('events').select('*'), // Fallback if no active program? Or better clear?
                     supabase.from('participants').select('*'),
                     supabase.from('departments').select('*'),
                     supabase.from('teams').select('*'),
@@ -80,7 +96,7 @@ export default function PublicDashboard() {
                     type: e.type,
                     gender: e.gender,
                     status: e.status,
-                    rounds: e.rounds, // Assuming JSON structure is compatible
+                    rounds: e.rounds,
                     currentRoundIndex: e.current_round_index,
                     participants: e.participants,
                     assignedStaffId: e.assigned_staff_id,
@@ -331,11 +347,20 @@ export default function PublicDashboard() {
 
         setSearching(true);
         try {
+            // Get Active Program ID
+            const { data: programData } = await supabase
+                .from('programs')
+                .select('id')
+                .eq('status', 'active')
+                .single();
+
+            const activeProgramId = programData?.id;
+
             // Only search by register number
             const { data: participantsData, error } = await supabase
                 .from('participants')
                 .select('*')
-                .eq('register_number', lookupQuery.trim());
+                .eq('register_number', lookupQuery.trim().toUpperCase()); // Ensure upper case
 
             if (error) throw error;
 
@@ -355,12 +380,26 @@ export default function PublicDashboard() {
                 };
 
                 // Find events this participant is registered for
-                const { data: eventsData, error: evError } = await supabase.from('events').select('*');
+                // Filter by ACTIVE PROGRAM if exists
+                let eventsQuery = supabase.from('events').select('*');
+                if (activeProgramId) {
+                    eventsQuery = eventsQuery.eq('program_id', activeProgramId);
+                }
+                const { data: eventsData, error: evError } = await eventsQuery;
                 if (evError) throw evError;
 
                 // Fetch teams this participant belongs to
                 // We need to fetch all teams and filter in JS because member_ids is a JSONB/Array and array containment syntax varies
-                const { data: teamsData, error: teamsError } = await supabase.from('teams').select('*');
+                // Optimization: Filter teams by event_ids from the active program events if possible, but teams don't always link easily without join.
+                // Just fetch all teams for now or filter by events if we had that list.
+                // Better: Fetch teams where event_id is in [active events]
+                const activeEventIds = eventsData?.map(e => e.id) || [];
+                let teamsQuery = supabase.from('teams').select('*');
+                if (activeProgramId && activeEventIds.length > 0) {
+                    teamsQuery = teamsQuery.in('event_id', activeEventIds);
+                }
+
+                const { data: teamsData, error: teamsError } = await teamsQuery;
                 if (teamsError) throw teamsError;
 
                 const participantTeams = teamsData.filter((t: any) =>
@@ -368,7 +407,7 @@ export default function PublicDashboard() {
                 );
                 const participantTeamIds = participantTeams.map(t => t.id);
 
-                const eventsList = eventsData.map((e: any) => ({
+                const eventsList = (eventsData || []).map((e: any) => ({
                     id: e.id,
                     ...e,
                     name: e.name,
@@ -410,6 +449,7 @@ export default function PublicDashboard() {
                     });
 
                 // Fetch participation requests for this participant
+                // Also filter by active program events
                 const { data: requestsData, error: requestsError } = await supabase
                     .from('participation_requests')
                     .select('*, events(*)')
@@ -420,18 +460,21 @@ export default function PublicDashboard() {
                     throw requestsError;
                 }
 
-                const participantRequests = (requestsData || []).map((r: any) => ({
-                    event: {
-                        id: r.events?.id,
-                        name: r.events?.name,
-                        type: r.events?.type,
-                        gender: r.events?.gender,
-                        status: r.events?.status,
-                    } as Event,
-                    status: r.status,
-                    eventId: r.event_id,
-                    id: r.id
-                }));
+                // Filter requests by active program events locally since we expanded events
+                const participantRequests = (requestsData || [])
+                    .filter((r: any) => !activeProgramId || r.events?.program_id === activeProgramId)
+                    .map((r: any) => ({
+                        event: {
+                            id: r.events?.id,
+                            name: r.events?.name,
+                            type: r.events?.type,
+                            gender: r.events?.gender,
+                            status: r.events?.status,
+                        } as Event,
+                        status: r.status,
+                        eventId: r.event_id,
+                        id: r.id
+                    }));
 
                 setLookupResult({
                     participant,
@@ -605,7 +648,7 @@ export default function PublicDashboard() {
             <header className="bg-white dark:bg-gray-800 shadow sticky top-0 z-10">
                 <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center text-black dark:text-gray-100">
                     <div>
-                        <h1 className="text-xl font-bold text-primary">GECW Sports Meet 26</h1>
+                        <h1 className="text-xl font-bold text-primary">{activeProgramName || "Sports Meet"}</h1>
                         <p className="text-sm text-gray-500">Live Results</p>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>

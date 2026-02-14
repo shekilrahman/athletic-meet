@@ -9,15 +9,11 @@ import VerificationPage from './pages/verification-page';
 import StaffLayout from './layouts/staff-layout';
 import StaffEventList from './pages/staff/event-list';
 import EventDetails from './pages/staff/event-details';
-import OfftrackLayout from './layouts/offtrack-layout';
-import OfftrackDashboard from './pages/offtrack/dashboard';
-import OfftrackEvents from './pages/offtrack/events';
-import OfftrackParticipants from './pages/offtrack/participants';
-import OfftrackResults from './pages/offtrack/results';
-import OfftrackEventDetails from './pages/offtrack/event-details';
+
 import AdminLayout from './layouts/admin-layout';
 import AdminDashboard from './pages/admin/dashboard';
 import ManageResources from './pages/admin/resources';
+import AdminPrograms from './pages/admin/programs';
 import AdminEvents from './pages/admin/events';
 import AdminEventDetails from './pages/admin/event-details';
 import AdminRequests from './pages/admin/requests';
@@ -45,21 +41,13 @@ function App() {
             <Route path="events/:eventId" element={<EventDetails />} />
           </Route>
 
-          {/* Offtrack Staff Routes (Desktop) */}
-          <Route path="/offtrack" element={<ProtectedRoute allowedRoles={['staff']} />}>
-            <Route element={<OfftrackLayout />}>
-              <Route index element={<OfftrackDashboard />} />
-              <Route path="events" element={<OfftrackEvents />} />
-              <Route path="events/:eventId" element={<OfftrackEventDetails />} />
-              <Route path="participants" element={<OfftrackParticipants />} />
-              <Route path="results" element={<OfftrackResults />} />
-            </Route>
-          </Route>
+
 
           {/* Admin Routes */}
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
+              <Route path="programs" element={<AdminPrograms />} />
               <Route path="resources" element={<ManageResources />} />
               <Route path="events" element={<AdminEvents />} />
               <Route path="requests" element={<AdminRequests />} />

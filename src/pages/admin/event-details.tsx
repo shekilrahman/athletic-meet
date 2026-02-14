@@ -95,7 +95,7 @@ export default function AdminEventDetails() {
         try {
             const { data, error } = await supabase
                 .from('events')
-                .select('*')
+                .select('*, programs(name, id, category)')
                 .eq('id', eventId)
                 .single();
 
@@ -240,7 +240,11 @@ export default function AdminEventDetails() {
             if (bError) throw bError;
 
             setDepartments((dData || []) as Department[]);
-            setBatches((bData || []) as Batch[]);
+            setBatches((bData || []).map((b: any) => ({
+                id: b.id,
+                name: b.name,
+                departmentId: b.department_id
+            })) as Batch[]);
         } catch (error) {
             console.error("Error fetching metadata:", error);
         }
@@ -874,12 +878,31 @@ export default function AdminEventDetails() {
                                         </div>
                                     ) : event.type === "group" ? (
                                         <div className="space-y-4">
-                                            <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                                                <SelectTrigger><SelectValue placeholder="Select Department (Team Name)" /></SelectTrigger>
-                                                <SelectContent>
-                                                    {departments.map(dep => <SelectItem key={dep.id} value={dep.name}>{dep.name}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
+                                            {event.programs?.category === 'department' ? (
+                                                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                                                    <SelectTrigger><SelectValue placeholder="Select Department (Team Name)" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {departments.map(dep => <SelectItem key={dep.id} value={dep.name}>{dep.name}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : event.programs?.category === 'semester' ? (
+                                                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                                                    <SelectTrigger><SelectValue placeholder="Select Semester (Team Name)" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {['S1/S2', 'S3/S4', 'S5/S6', 'S7/S8'].map((semPair) => (
+                                                            <SelectItem key={semPair} value={semPair}>
+                                                                {semPair}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : (
+                                                <Input
+                                                    placeholder="Enter Team Name"
+                                                    value={selectedDepartment}
+                                                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                                                />
+                                            )}
 
                                             <div className="space-y-2">
                                                 {Array.from({ length: event.teamSize || 1 }).map((_, i) => (

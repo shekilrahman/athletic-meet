@@ -20,16 +20,8 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "../../../components/ui/dialog";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "../../../components/ui/select";
 import { Plus, Trash2, Edit, Loader2, Eye, EyeOff } from "lucide-react";
 import type { UserProfile } from "../../../types";
-import { Badge } from "../../../components/ui/badge";
 
 export function StaffManagement() {
     const [staff, setStaff] = useState<UserProfile[]>([]);
@@ -103,7 +95,7 @@ export function StaffManagement() {
                     email: formData.email,
                     phone: formData.phone,
                     role: "staff",
-                    staff_type: formData.staffType, // Snake_case in DB likely
+                    staff_type: "ontrack", // Defaulting to ontrack
                     password: formData.password,
                 }
             ]);
@@ -199,7 +191,7 @@ export function StaffManagement() {
             <div className="flex justify-between items-center">
                 <div>
                     <h3 className="text-lg font-medium">Staff Accounts</h3>
-                    <p className="text-sm text-muted-foreground">Manage ontrack and offtrack staff.</p>
+                    <p className="text-sm text-muted-foreground">Manage staff access.</p>
                 </div>
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                     <DialogTrigger asChild>
@@ -251,18 +243,6 @@ export function StaffManagement() {
                                 <Label htmlFor="phone" className="text-right">Phone</Label>
                                 <Input id="phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="col-span-3" />
                             </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="type" className="text-right">Type</Label>
-                                <Select value={formData.staffType} onValueChange={(val: string) => setFormData({ ...formData, staffType: val })}>
-                                    <SelectTrigger className="col-span-3">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="ontrack">Ontrack (Judges/Marshals)</SelectItem>
-                                        <SelectItem value="offtrack">Offtrack (Registration/Logistics)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
                         </div>
                         <DialogFooter>
                             <Button onClick={handleAddStaff} disabled={creating}>
@@ -282,15 +262,14 @@ export function StaffManagement() {
                             <TableHead>Email</TableHead>
                             <TableHead>Password</TableHead>
                             <TableHead>Phone</TableHead>
-                            <TableHead>Type</TableHead>
                             <TableHead className="w-[100px]">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
-                            <TableRow><TableCell colSpan={6} className="text-center py-4">Loading staff...</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={5} className="text-center py-4">Loading staff...</TableCell></TableRow>
                         ) : staff.length === 0 ? (
-                            <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground">No staff found.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={5} className="text-center py-4 text-muted-foreground">No staff found.</TableCell></TableRow>
                         ) : (
                             staff.map((s) => (
                                 <TableRow key={s.uid}>
@@ -307,11 +286,6 @@ export function StaffManagement() {
                                         </div>
                                     </TableCell>
                                     <TableCell>{s.phone || "-"}</TableCell>
-                                    <TableCell>
-                                        <Badge variant={s.staffType === 'ontrack' ? 'default' : 'secondary'}>
-                                            {s.staffType === 'ontrack' ? 'Ontrack' : 'Offtrack'}
-                                        </Badge>
-                                    </TableCell>
                                     <TableCell>
                                         <div className="flex gap-2">
                                             <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
@@ -367,24 +341,12 @@ export function StaffManagement() {
                             <Label htmlFor="edit-phone" className="text-right">Phone</Label>
                             <Input id="edit-phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="col-span-3" />
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="edit-type" className="text-right">Type</Label>
-                            <Select value={formData.staffType} onValueChange={(val: string) => setFormData({ ...formData, staffType: val })}>
-                                <SelectTrigger className="col-span-3">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="ontrack">Ontrack</SelectItem>
-                                    <SelectItem value="offtrack">Offtrack</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
                     <DialogFooter>
                         <Button onClick={handleEditStaff}>Save Changes</Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
-        </div>
+            </Dialog >
+        </div >
     );
 }

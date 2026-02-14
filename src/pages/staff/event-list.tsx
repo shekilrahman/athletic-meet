@@ -26,7 +26,16 @@ export default function StaffEventList() {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                const { data, error } = await supabase
+                // 1. Get active program
+                const { data: programData } = await supabase
+                    .from('programs')
+                    .select('id')
+                    .eq('status', 'active')
+                    .single();
+
+                const activeProgramId = programData?.id;
+
+                let query = supabase
                     .from('events')
                     .select(`
                         *,
@@ -39,6 +48,11 @@ export default function StaffEventList() {
                         points3rd:points_3rd
                     `);
 
+                if (activeProgramId) {
+                    query = query.eq('program_id', activeProgramId);
+                }
+
+                const { data, error } = await query;
                 if (error) throw error;
                 setEvents((data || []) as Event[]);
             } catch (error) {

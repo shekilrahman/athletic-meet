@@ -44,11 +44,7 @@ export default function Login() {
                 if (profile.role === 'admin') {
                     navigate('/admin', { replace: true });
                 } else if (profile.role === 'staff') {
-                    if (profile.staffType === 'offtrack') {
-                        navigate('/offtrack', { replace: true });
-                    } else {
-                        navigate('/ontrack', { replace: true });
-                    }
+                    navigate('/ontrack', { replace: true });
                 } else {
                     navigate('/', { replace: true });
                 }

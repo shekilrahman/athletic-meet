@@ -105,7 +105,7 @@ export function EditEventDialog({ event, open, onOpenChange, onEventUpdated }: E
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="edit-name" className="text-right">
-                                Name
+                                Event Name
                             </Label>
                             <Input
                                 id="edit-name"
@@ -155,7 +155,7 @@ export function EditEventDialog({ event, open, onOpenChange, onEventUpdated }: E
                         )}
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="edit-gender" className="text-right">
-                                Category
+                                Gender
                             </Label>
                             <Select
                                 value={formData.gender}

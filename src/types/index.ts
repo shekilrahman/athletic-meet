@@ -34,6 +34,8 @@ export interface Event {
     name: string;
     type: 'individual' | 'group';
     gender: 'male' | 'female' | 'mixed';
+
+    program_id: string; // References Program.id
     status: 'upcoming' | 'ongoing' | 'completed';
     rounds: Round[];
     currentRoundIndex: number;
@@ -44,6 +46,16 @@ export interface Event {
     points1st?: number; // Points for 1st place
     points2nd?: number; // Points for 2nd place
     points3rd?: number; // Points for 3rd place
+    programs?: { name: string; id: string; category?: 'department' | 'semester' | 'mixed' }; // Joined property
+}
+
+export interface Program {
+    id: string;
+    name: string;
+
+    status: 'active' | 'inactive' | 'ended';
+    category: 'department' | 'semester' | 'mixed';
+    created_at?: string;
 }
 
 export interface Team {
