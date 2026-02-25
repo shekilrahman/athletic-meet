@@ -19,7 +19,12 @@ type RequestWithDetails = ParticipationRequest & {
     eventDetails?: Event;
 };
 
-export default function AdminRequests() {
+interface AdminRequestsProps {
+    programId?: string;
+    isEmbedded?: boolean;
+}
+
+export default function AdminRequests({ programId, isEmbedded = false }: AdminRequestsProps) {
     const [requests, setRequests] = useState<RequestWithDetails[]>([]);
     const [allEvents, setAllEvents] = useState<Event[]>([]);
     const [selectedEventId, setSelectedEventId] = useState<string>("all");
@@ -96,10 +101,11 @@ export default function AdminRequests() {
             setRequests(combinedRequests);
 
             // 5. Fetch all events for filter
-            const { data: allEvData, error: allEvError } = await supabase
-                .from('events')
-                .select('*')
-                .order('name');
+            let allEvQuery = supabase.from('events').select('*').order('name');
+            if (programId) {
+                allEvQuery = allEvQuery.eq('program_id', programId);
+            }
+            const { data: allEvData, error: allEvError } = await allEvQuery;
 
             if (allEvError) throw allEvError;
             const individualEvents = (allEvData as Event[]).filter(e => e.type !== 'group');
@@ -278,16 +284,28 @@ export default function AdminRequests() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Participation Requests</h2>
-                    <p className="text-muted-foreground">Manage student requests to join events.</p>
+            {!isEmbedded && (
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h2 className="text-3xl font-bold tracking-tight">Participation Requests</h2>
+                        <p className="text-muted-foreground">Manage student requests to join events.</p>
+                    </div>
+                    <Button variant="outline" onClick={fetchRequests} disabled={loading}>
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Refresh
+                    </Button>
                 </div>
-                <Button variant="outline" onClick={fetchRequests} disabled={loading}>
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Refresh
-                </Button>
-            </div>
+            )}
+
+            {isEmbedded && (
+                <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-xl font-bold tracking-tight">Manage Requests</h3>
+                    <Button variant="outline" size="sm" onClick={fetchRequests} disabled={loading}>
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Refresh
+                    </Button>
+                </div>
+            )}
 
             <div className="flex flex-col md:flex-row items-start md:items-center bg-white dark:bg-gray-800 p-4 rounded-lg border shadow-sm gap-6">
                 <div className="flex items-center gap-4 flex-1 w-full md:w-auto">

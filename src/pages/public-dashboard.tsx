@@ -12,7 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Loader2, Trophy, Clock, Users, User, Medal, Award, UserPlus, Search, Download, Trash2 } from "lucide-react";
 import type { Event, Participant, Department, Team, Batch, Round, RoundParticipant } from "../types";
 import { generateCertificate, type CertificateType } from "../lib/certificate-generator";
-import { getSiteSettings, type SiteSettings } from "../lib/settings-service";
+
+interface SiteSettings {
+    enable_downloads: boolean;
+    enable_requests: boolean;
+}
 
 export default function PublicDashboard() {
     const [events, setEvents] = useState<Event[]>([]);
@@ -62,27 +66,30 @@ export default function PublicDashboard() {
                 // 1. Get Active Program
                 const { data: programData } = await supabase
                     .from('programs')
-                    .select('id, name')
+                    .select('id, name, enable_downloads, enable_requests')
                     .eq('status', 'active')
                     .single();
 
                 if (programData) {
                     setActiveProgramName(programData.name);
+                    setSettings({
+                        enable_downloads: programData.enable_downloads ?? false,
+                        enable_requests: programData.enable_requests ?? false
+                    });
+                } else {
+                    setSettings({ enable_downloads: false, enable_requests: false });
                 }
 
                 // 2. Fetch data (filtered by program if applicable)
-                const [eventsRes, partsRes, deptsRes, teamsRes, batchesRes, settingsData] = await Promise.all([
+                const [eventsRes, partsRes, deptsRes, teamsRes, batchesRes] = await Promise.all([
                     programData
                         ? supabase.from('events').select('*').eq('program_id', programData.id)
                         : supabase.from('events').select('*'), // Fallback if no active program? Or better clear?
                     supabase.from('participants').select('*'),
                     supabase.from('departments').select('*'),
                     supabase.from('teams').select('*'),
-                    supabase.from('batches').select('*'),
-                    getSiteSettings()
+                    supabase.from('batches').select('*')
                 ]);
-
-                if (settingsData) setSettings(settingsData);
 
                 if (eventsRes.error) throw eventsRes.error;
                 if (partsRes.error) throw partsRes.error;

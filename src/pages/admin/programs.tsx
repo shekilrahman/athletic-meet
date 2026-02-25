@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -20,6 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../../components/ui/select";
+import { Switch } from "../../components/ui/switch";
 import {
     Dialog,
     DialogContent,
@@ -28,7 +30,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "../../components/ui/dialog";
-import { Plus, Loader2, Edit, Trash2 } from "lucide-react";
+import { Plus, Loader2, Edit, Trash2, Download, UserPlus, CheckCircle2, XCircle, Settings2 } from "lucide-react";
 import type { Program } from "../../types";
 
 export default function AdminPrograms() {
@@ -40,7 +42,9 @@ export default function AdminPrograms() {
     const [editingProgram, setEditingProgram] = useState<Program | null>(null);
     const [formData, setFormData] = useState({
         name: "",
-        category: 'department' as 'department' | 'semester' | 'mixed'
+        category: 'department' as 'department' | 'semester' | 'mixed',
+        enable_downloads: true,
+        enable_requests: true
     });
     const [saving, setSaving] = useState(false);
 
@@ -61,13 +65,13 @@ export default function AdminPrograms() {
 
     const openCreate = () => {
         setEditingProgram(null);
-        setFormData({ name: "", category: 'department' });
+        setFormData({ name: "", category: 'department', enable_downloads: true, enable_requests: true });
         setIsDialogOpen(true);
     };
 
     const openEdit = (program: Program) => {
         setEditingProgram(program);
-        setFormData({ name: program.name, category: program.category });
+        setFormData({ name: program.name, category: program.category, enable_downloads: program.enable_downloads ?? true, enable_requests: program.enable_requests ?? true });
         setIsDialogOpen(true);
     };
 
@@ -83,7 +87,9 @@ export default function AdminPrograms() {
                     .from('programs')
                     .update({
                         name: formData.name,
-                        category: formData.category
+                        category: formData.category,
+                        enable_downloads: formData.enable_downloads,
+                        enable_requests: formData.enable_requests
                     })
                     .eq('id', editingProgram.id);
                 if (error) throw error;
@@ -94,6 +100,8 @@ export default function AdminPrograms() {
                     .insert([{
                         name: formData.name,
                         category: formData.category,
+                        enable_downloads: formData.enable_downloads,
+                        enable_requests: formData.enable_requests,
                         status: 'inactive'
                     }]);
                 if (error) throw error;
@@ -216,6 +224,7 @@ export default function AdminPrograms() {
                             <TableRow>
                                 <TableHead>Name</TableHead>
                                 <TableHead>Status</TableHead>
+                                <TableHead>Features</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -243,7 +252,29 @@ export default function AdminPrograms() {
                                             {program.status === 'inactive' && <Badge variant="secondary">Inactive</Badge>}
                                             {program.status === 'ended' && <Badge variant="destructive">Ended</Badge>}
                                         </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col gap-1 text-xs">
+                                                <span className="flex items-center gap-1 text-muted-foreground">
+                                                    <Download className="h-3 w-3" /> Downloads: {program.enable_downloads ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
+                                                </span>
+                                                <span className="flex items-center gap-1 text-muted-foreground">
+                                                    <UserPlus className="h-3 w-3" /> Requests: {program.enable_requests ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
+                                                </span>
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-right space-x-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                asChild
+                                                className="bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary transition-colors"
+                                            >
+                                                <Link to={`/admin/programs/${program.id}`}>
+                                                    <Settings2 className="h-4 w-4 mr-2" />
+                                                    Manage Program
+                                                </Link>
+                                            </Button>
+
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
@@ -344,6 +375,32 @@ export default function AdminPrograms() {
                                         <SelectItem value="mixed">Mixed</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="enable_downloads" className="text-right whitespace-nowrap">
+                                    Downloads
+                                </Label>
+                                <div className="col-span-3 flex items-center space-x-2">
+                                    <Switch
+                                        id="enable_downloads"
+                                        checked={formData.enable_downloads}
+                                        onCheckedChange={(checked) => setFormData({ ...formData, enable_downloads: checked })}
+                                    />
+                                    <span className="text-sm text-muted-foreground">Allow certificate downloads</span>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="enable_requests" className="text-right whitespace-nowrap">
+                                    Requests
+                                </Label>
+                                <div className="col-span-3 flex items-center space-x-2">
+                                    <Switch
+                                        id="enable_requests"
+                                        checked={formData.enable_requests}
+                                        onCheckedChange={(checked) => setFormData({ ...formData, enable_requests: checked })}
+                                    />
+                                    <span className="text-sm text-muted-foreground">Allow participation requests</span>
+                                </div>
                             </div>
                         </div>
                         <DialogFooter>

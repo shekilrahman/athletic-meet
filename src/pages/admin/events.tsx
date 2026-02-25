@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
-import type { Event, Program } from "../../types";
+import type { Event } from "../../types";
 import { CreateEventDialog } from "./components/create-event-dialog";
 import { EditEventDialog } from "./components/edit-event-dialog";
+import { Card, CardContent } from "../../components/ui/card";
 
 import {
     Table,
@@ -15,58 +16,33 @@ import {
 } from "../../components/ui/table";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Edit, Trash2, AlertCircle } from "lucide-react";
+import { Edit, Trash2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "../../components/ui/select";
 
-export default function AdminEvents() {
+interface AdminEventsProps {
+    isEmbedded?: boolean;
+}
+
+export default function AdminEvents({ isEmbedded = false }: AdminEventsProps) {
     const [events, setEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
     const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
-    // Program state
-    const [programs, setPrograms] = useState<Program[]>([]);
-    const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
+    const { programId } = useParams();
 
     const fetchData = async () => {
+        if (!programId) return;
         setLoading(true);
         try {
-            // 1. Fetch all programs to populate dropdown
-            const { data: programsData, error: programsError } = await supabase
-                .from('programs')
-                .select('*')
-                .order('created_at', { ascending: false });
+            // 1. Fetch Events for Selected Program
+            const { data: eventsData, error: eventsError } = await supabase
+                .from('events')
+                .select('*, programs(name, id, category)')
+                .eq('program_id', programId);
 
-            if (programsError) throw programsError;
-            setPrograms((programsData || []) as Program[]);
-
-            // Default to active program if no selection, or first available
-            let targetProgramId = selectedProgramId;
-            if (!targetProgramId && programsData && programsData.length > 0) {
-                const active = programsData.find((p: any) => p.status === 'active');
-                targetProgramId = active ? active.id : programsData[0].id;
-                setSelectedProgramId(targetProgramId);
-            }
-
-            if (targetProgramId) {
-                // 2. Fetch Events for Selected Program
-                const { data: eventsData, error: eventsError } = await supabase
-                    .from('events')
-                    .select('*, programs(name, id, category)')
-                    .eq('program_id', targetProgramId);
-
-                if (eventsError) throw eventsError;
-                setEvents(eventsData as Event[]);
-            } else {
-                setEvents([]);
-            }
+            if (eventsError) throw eventsError;
+            const fetchedEvents = eventsData as Event[];
+            setEvents(fetchedEvents);
 
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -93,8 +69,8 @@ export default function AdminEvents() {
     };
 
     useEffect(() => {
-        fetchData();
-    }, [selectedProgramId]); // Re-fetch when selection changes
+        if (programId) fetchData();
+    }, [programId]); // Re-fetch when programId changes
 
     const filterEvents = (gender: 'male' | 'female' | 'mixed') => {
         return events.filter(event => event.gender === gender);
@@ -168,73 +144,38 @@ export default function AdminEvents() {
     );
 
 
-
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Events</h2>
-                    <p className="text-muted-foreground">
-                        Manage events for the selected program.
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Select
-                        value={selectedProgramId || undefined}
-                        onValueChange={setSelectedProgramId}
-                    >
-                        <SelectTrigger className="w-[250px]">
-                            <SelectValue placeholder="Select a program..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {programs.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>
-                                    <div className="flex items-center gap-2">
-                                        {p.name}
-                                        <Badge variant="outline" className="ml-2 h-5 text-[10px] px-1 capitalize">{p.category || 'Dept'}</Badge>
-                                        {p.status === 'active' && <Badge className="ml-2 h-5 text-[10px] px-1 bg-green-500">Active</Badge>}
-                                        {p.status === 'ended' && <Badge variant="destructive" className="ml-2 h-5 text-[10px] px-1">Ended</Badge>}
-                                        {p.status === 'inactive' && <Badge variant="outline" className="ml-2 h-5 text-[10px] px-1">Inactive</Badge>}
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <CreateEventDialog
-                        onEventCreated={fetchData}
-                        programId={selectedProgramId}
-                    />
-                </div>
+    const content = (
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold tracking-tight">{isEmbedded ? "Manage Events" : ""}</h3>
+                <CreateEventDialog
+                    onEventCreated={fetchData}
+                    programId={programId || null}
+                />
             </div>
 
-            {!selectedProgramId && !loading && programs.length === 0 && (
-                <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>No Programs Found</AlertTitle>
-                    <AlertDescription>
-                        Please create a program in the Programs section first.
-                    </AlertDescription>
-                </Alert>
-            )}
-
-            {selectedProgramId && (
-                <Tabs defaultValue="male" className="w-full">
-                    <TabsList>
-                        <TabsTrigger value="male">Men</TabsTrigger>
-                        <TabsTrigger value="female">Women</TabsTrigger>
-                        <TabsTrigger value="mixed">Mixed</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="male">
-                        <EventTable data={filterEvents('male')} />
-                    </TabsContent>
-                    <TabsContent value="female">
-                        <EventTable data={filterEvents('female')} />
-                    </TabsContent>
-                    <TabsContent value="mixed">
-                        <EventTable data={filterEvents('mixed')} />
-                    </TabsContent>
-                </Tabs>
-            )}
+            <Card className="border shadow-sm bg-white dark:bg-gray-800 overflow-hidden">
+                <CardContent className="p-0">
+                    <Tabs defaultValue="male" className="w-full">
+                        <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0 h-14 px-4 gap-4">
+                            <TabsTrigger value="male" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 h-full">Men</TabsTrigger>
+                            <TabsTrigger value="female" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 h-full">Women</TabsTrigger>
+                            <TabsTrigger value="mixed" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 h-full">Mixed</TabsTrigger>
+                        </TabsList>
+                        <div className="p-4">
+                            <TabsContent value="male" className="mt-0">
+                                <EventTable data={filterEvents('male')} />
+                            </TabsContent>
+                            <TabsContent value="female" className="mt-0">
+                                <EventTable data={filterEvents('female')} />
+                            </TabsContent>
+                            <TabsContent value="mixed" className="mt-0">
+                                <EventTable data={filterEvents('mixed')} />
+                            </TabsContent>
+                        </div>
+                    </Tabs>
+                </CardContent>
+            </Card>
 
             <EditEventDialog
                 event={editingEvent}
@@ -244,4 +185,6 @@ export default function AdminEvents() {
             />
         </div>
     );
+
+    return content;
 }

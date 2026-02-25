@@ -34,7 +34,6 @@ export interface Event {
     name: string;
     type: 'individual' | 'group';
     gender: 'male' | 'female' | 'mixed';
-
     program_id: string; // References Program.id
     status: 'upcoming' | 'ongoing' | 'completed';
     rounds: Round[];
@@ -55,6 +54,8 @@ export interface Program {
 
     status: 'active' | 'inactive' | 'ended';
     category: 'department' | 'semester' | 'mixed';
+    enable_downloads?: boolean;
+    enable_requests?: boolean;
     created_at?: string;
 }
 

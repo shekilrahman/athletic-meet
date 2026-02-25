@@ -22,7 +22,6 @@ export default function AdminLayout() {
     const menuItems = [
         { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
         { name: "Programs", path: "/admin/programs", icon: Calendar },
-        { name: "Events", path: "/admin/events", icon: Calendar },
         { name: "Requests", path: "/admin/requests", icon: UserPlus },
         { name: "Manage Resources", path: "/admin/resources", icon: Users },
         { name: "Certificates", path: "/admin/certificates", icon: Award },

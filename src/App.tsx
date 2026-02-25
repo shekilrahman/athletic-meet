@@ -14,7 +14,8 @@ import AdminLayout from './layouts/admin-layout';
 import AdminDashboard from './pages/admin/dashboard';
 import ManageResources from './pages/admin/resources';
 import AdminPrograms from './pages/admin/programs';
-import AdminEvents from './pages/admin/events';
+// Dashboard component below:
+import AdminProgramDashboard from './pages/admin/program-dashboard';
 import AdminEventDetails from './pages/admin/event-details';
 import AdminRequests from './pages/admin/requests';
 import AdminSettings from './pages/admin/settings';
@@ -49,13 +50,13 @@ function App() {
               <Route index element={<AdminDashboard />} />
               <Route path="programs" element={<AdminPrograms />} />
               <Route path="resources" element={<ManageResources />} />
-              <Route path="events" element={<AdminEvents />} />
               <Route path="requests" element={<AdminRequests />} />
               <Route path="certificates" element={<CertificatePreview />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
+            {/* Full-Page Admin Routes */}
+            <Route path="programs/:programId" element={<AdminProgramDashboard />} />
             <Route path="events/:eventId" element={<AdminEventDetails />} />
-
           </Route>
 
           {/* Fallback */}
